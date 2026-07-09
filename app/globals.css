@@ -22,5 +22,73 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+.writhing-prose {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--foreground);
+}
+
+.writhing-prose h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0.5rem 0 1rem;
+}
+
+.writhing-prose h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.5rem 0 0.75rem;
+}
+
+.writhing-prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.writhing-prose p {
+  margin: 0 0 1rem;
+}
+
+.writhing-prose ul,
+.writhing-prose ol {
+  margin: 0 0 1rem;
+  padding-left: 1.5rem;
+}
+
+.writhing-prose ul {
+  list-style: disc;
+}
+
+.writhing-prose ol {
+  list-style: decimal;
+}
+
+.writhing-prose blockquote {
+  border-left: 3px solid var(--color-zinc-300, #d4d4d8);
+  padding-left: 1rem;
+  color: #6b7280;
+  font-style: italic;
+  margin: 0 0 1rem;
+}
+
+.writhing-prose code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.9em;
+  background: rgba(120, 120, 120, 0.15);
+  padding: 0.1em 0.3em;
+  border-radius: 0.25rem;
+}
+
+.writhing-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  float: left;
+  height: 0;
+  pointer-events: none;
 }
