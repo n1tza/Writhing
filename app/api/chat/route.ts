@@ -42,6 +42,8 @@ function systemPrompt(
           "- insertText: add new text at the cursor or the end of the document.",
           "- rewriteDocument: replace the whole document (use sparingly, only for full rewrites).",
           "",
+          "Formatting: the text you write in these tools is interpreted as Markdown, so you CAN format the writing. Use **bold**, *italic*, ~~strikethrough~~, `code`, headings (#, ##, ###), bullet lists (-), numbered lists (1.), and > blockquotes as appropriate. To format existing text (e.g. 'make X bold'), use editDocument with the same words wrapped in Markdown.",
+          "",
           "Guidelines:",
           "- When the user asks you to change the writing, make the edit with a tool rather than only describing it.",
           "- Prefer small, targeted editDocument calls over rewriting everything.",

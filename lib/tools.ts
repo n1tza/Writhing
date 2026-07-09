@@ -40,17 +40,17 @@ export type RewriteDocumentInput = z.infer<typeof rewriteDocumentSchema>;
 export const editorTools = {
   editDocument: {
     description:
-      "Replace a specific snippet of the document with new text. Use for targeted edits like rewording a sentence or fixing a phrase. The 'find' text must exactly match text currently in the document.",
+      "Replace a specific snippet of the document with new text. Use for targeted edits like rewording a sentence, fixing a phrase, or applying formatting (e.g. making a word bold). The 'find' text must exactly match text currently in the document. The 'replace' value may use inline Markdown for formatting: **bold**, *italic*, ~~strikethrough~~, `code`.",
     inputSchema: editDocumentSchema,
   },
   insertText: {
     description:
-      "Insert new text into the document, either at the user's cursor or appended to the end. Use when adding new content rather than changing existing text.",
+      "Insert new text into the document, either at the user's cursor or appended to the end. Use when adding new content rather than changing existing text. The 'text' may use Markdown for formatting and structure: **bold**, *italic*, headings (#, ##), bullet lists (-), numbered lists (1.), and > blockquotes.",
     inputSchema: insertTextSchema,
   },
   rewriteDocument: {
     description:
-      "Replace the entire document with new content. Use only for large-scale rewrites or when the user explicitly asks to rewrite the whole document.",
+      "Replace the entire document with new content. Use only for large-scale rewrites or when the user explicitly asks to rewrite the whole document. The 'content' may use Markdown for formatting and structure (headings, lists, bold, italic, blockquotes).",
     inputSchema: rewriteDocumentSchema,
   },
 } as const;

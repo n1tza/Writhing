@@ -8,7 +8,13 @@ import {
 } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import type { Node as ProseMirrorNode, Schema } from "@tiptap/pm/model";
+import {
+  DOMParser as PMDOMParser,
+  type Fragment,
+  type Node as ProseMirrorNode,
+  type Schema,
+} from "@tiptap/pm/model";
+import { marked } from "marked";
 import { DiffDeleteMark, DiffInsertMark } from "@/lib/diffExtensions";
 import {
   createDebouncedSaver,
@@ -42,35 +48,30 @@ interface Pill {
   top: number;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function markdownToHtml(markdown: string): string {
+  return marked.parse(markdown, { async: false, breaks: true });
 }
 
-function textToHtml(content: string): string {
-  return content
-    .split(/\n{2,}/)
-    .map((paragraph) => {
-      const withBreaks = escapeHtml(paragraph.trim()).replace(/\n/g, "<br>");
-      return `<p>${withBreaks || "<br>"}</p>`;
-    })
-    .join("");
+function inlineMarkdownToHtml(markdown: string): string {
+  return marked.parseInline(markdown, { async: false, breaks: true });
 }
 
-function buildParagraphs(
-  schema: Schema,
-  text: string,
-  markId: string,
-): ProseMirrorNode[] {
-  const mark = schema.marks.diffInsert.create({ diffId: markId });
-  return text.split(/\n{2,}/).map((block) => {
-    const trimmed = block.trim();
-    if (!trimmed) return schema.nodes.paragraph.create();
-    const content = schema.text(trimmed.replace(/\n/g, " "), [mark]);
-    return schema.nodes.paragraph.create(null, content);
-  });
+/** Parse block-level HTML (paragraphs, headings, lists, ...) into PM nodes. */
+function parseBlockHtml(schema: Schema, html: string): Fragment {
+  const dom = new window.DOMParser().parseFromString(html, "text/html");
+  return PMDOMParser.fromSchema(schema).parse(dom.body).content;
+}
+
+/** Parse inline HTML (bold, italic, ...) into inline PM nodes, no block wrapper. */
+function parseInlineHtml(schema: Schema, html: string): Fragment {
+  const dom = new window.DOMParser().parseFromString(
+    `<span>${html}</span>`,
+    "text/html",
+  );
+  const span = dom.body.firstElementChild ?? dom.body;
+  return PMDOMParser.fromSchema(schema)
+    .parseSlice(span, { preserveWhitespace: true })
+    .content;
 }
 
 function gatherDiffEnds(doc: ProseMirrorNode): Map<string, number> {
@@ -100,7 +101,7 @@ export default function Editor({
 }) {
   const debouncedSave = useRef(createDebouncedSaver(500));
   const pendingRewrites = useRef(
-    new Map<string, { oldHtml: string; newContent: string }>(),
+    new Map<string, { oldHtml: string; newHtml: string }>(),
   );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [pills, setPills] = useState<Pill[]>([]);
@@ -166,14 +167,31 @@ export default function Editor({
       return;
     }
 
-    const findRange = (find: string): { from: number; to: number } | null => {
+    // Length-preserving normalization so smart quotes / dashes / nbsp in the
+    // document match the plain-text snippet the model copied, without breaking
+    // the index -> position mapping.
+    const normalize = (s: string) =>
+      s
+        .replace(/[\u2018\u2019\u201B\u2032]/g, "'")
+        .replace(/[\u201C\u201D\u2033]/g, '"')
+        .replace(/[\u2013\u2014]/g, "-")
+        .replace(/\u00A0/g, " ");
+
+    const findRange = (rawFind: string): { from: number; to: number } | null => {
+      const find = rawFind.trim();
+      if (!find) return null;
+      const normFind = normalize(find);
+
       let result: { from: number; to: number } | null = null;
+      // Search each text block's full text so matches survive formatting splits
+      // (e.g. a bold word) within a paragraph.
       editor.state.doc.descendants((node, pos) => {
         if (result) return false;
-        if (node.isText && node.text) {
-          const idx = node.text.indexOf(find);
+        if (node.isTextblock) {
+          const idx = normalize(node.textContent).indexOf(normFind);
           if (idx !== -1) {
-            result = { from: pos + idx, to: pos + idx + find.length };
+            const from = pos + 1 + idx;
+            result = { from, to: from + normFind.length };
             return false;
           }
         }
@@ -214,6 +232,17 @@ export default function Editor({
       proposeEdit: (id, kind, input) => {
         const { schema } = editor.state;
 
+        const insertFragment = (tr: typeof editor.state.tr, at: number, frag: Fragment) => {
+          if (frag.size === 0) return false;
+          tr.insert(at, frag);
+          tr.addMark(
+            at,
+            at + frag.size,
+            schema.marks.diffInsert.create({ diffId: id }),
+          );
+          return true;
+        };
+
         if (kind === "editDocument") {
           const { find, replace } = input as EditDocumentInput;
           const range = findRange(find);
@@ -224,12 +253,11 @@ export default function Editor({
             range.to,
             schema.marks.diffDelete.create({ diffId: id }),
           );
-          if (replace.length > 0) {
-            tr.insert(
+          if (replace.trim()) {
+            insertFragment(
+              tr,
               range.to,
-              schema.text(replace, [
-                schema.marks.diffInsert.create({ diffId: id }),
-              ]),
+              parseInlineHtml(schema, inlineMarkdownToHtml(replace)),
             );
           }
           editor.view.dispatch(tr);
@@ -240,20 +268,19 @@ export default function Editor({
           const { text, position } = input as InsertTextInput;
           if (!text.trim()) return false;
           const tr = editor.state.tr;
-          if (position === "cursor") {
-            const pos = editor.state.selection.from;
-            tr.insert(
-              pos,
-              schema.text(text.replace(/\n/g, " "), [
-                schema.marks.diffInsert.create({ diffId: id }),
-              ]),
-            );
-          } else {
-            tr.insert(
-              editor.state.doc.content.size,
-              buildParagraphs(schema, text, id),
-            );
-          }
+          const ok =
+            position === "cursor"
+              ? insertFragment(
+                  tr,
+                  editor.state.selection.from,
+                  parseInlineHtml(schema, inlineMarkdownToHtml(text)),
+                )
+              : insertFragment(
+                  tr,
+                  editor.state.doc.content.size,
+                  parseBlockHtml(schema, markdownToHtml(text)),
+                );
+          if (!ok) return false;
           editor.view.dispatch(tr);
           return true;
         }
@@ -261,9 +288,10 @@ export default function Editor({
         if (kind === "rewriteDocument") {
           const { content } = input as RewriteDocumentInput;
           if (!content.trim()) return false;
+          const newHtml = markdownToHtml(content);
           pendingRewrites.current.set(id, {
             oldHtml: editor.getHTML(),
-            newContent: content,
+            newHtml,
           });
           const tr = editor.state.tr;
           tr.addMark(
@@ -271,10 +299,12 @@ export default function Editor({
             editor.state.doc.content.size,
             schema.marks.diffDelete.create({ diffId: id }),
           );
-          tr.insert(
+          const ok = insertFragment(
+            tr,
             editor.state.doc.content.size,
-            buildParagraphs(schema, content, id),
+            parseBlockHtml(schema, newHtml),
           );
+          if (!ok) return false;
           editor.view.dispatch(tr);
           return true;
         }
@@ -286,11 +316,7 @@ export default function Editor({
         const rewrite = pendingRewrites.current.get(id);
         if (rewrite) {
           pendingRewrites.current.delete(id);
-          editor
-            .chain()
-            .setContent(textToHtml(rewrite.newContent))
-            .focus("end")
-            .run();
+          editor.chain().setContent(rewrite.newHtml).focus("end").run();
           saveClean();
           return;
         }
