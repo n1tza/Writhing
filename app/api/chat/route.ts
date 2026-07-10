@@ -19,6 +19,7 @@ type ChatMode = "agent" | "ask";
 
 function systemPrompt(
   document: string,
+  documentHtml: string,
   selection: string,
   mode: ChatMode,
 ): string {
@@ -44,6 +45,15 @@ function systemPrompt(
           "",
           "Formatting: the text you write in these tools is interpreted as Markdown, so you CAN format the writing. Use **bold**, *italic*, ~~strikethrough~~, `code`, headings (#, ##, ###), bullet lists (-), numbered lists (1.), and > blockquotes as appropriate. To format existing text (e.g. 'make X bold'), use editDocument with the same words wrapped in Markdown.",
           "",
+          "MATCHING FONTS, SIZES, AND COLORS:",
+          "- Below the plain-text document you are also given the document's HTML (=== DOCUMENT HTML ===). This shows the EXACT formatting in use: font families, font sizes, colors, highlights, bold/italic, and headings.",
+          "- Whenever you add or change text, MATCH the formatting of the surrounding/comparable content. Inspect the HTML to see what font-family, font-size, and color similar elements use, and replicate them precisely.",
+          "- PREFERRED WAY to apply a font/size/color: set the tool's `formatting` field ({ fontFamily, fontSize, color }). It is applied uniformly to EVERY paragraph you insert or replace. ALWAYS use this when your inserted text is more than one paragraph, or whenever the whole insertion shares one style. Copy fontFamily and fontSize verbatim from a comparable element in the DOCUMENT HTML (e.g. fontFamily: \"'Times New Roman', Times, serif\", fontSize: \"14px\").",
+          "- Do NOT wrap multi-paragraph text in a single <span> — a span is inline and cannot cross paragraph breaks, so only the first paragraph would get styled. Use the `formatting` field instead.",
+          "- Only use inline HTML for styling PART of a paragraph differently: `<span style=\"color: #f87171\">word</span>` for a colored word, or `<mark style=\"background-color: #fde68a\">word</mark>` for a highlight.",
+          "- Example: if body text in the HTML uses `font-family: 'Times New Roman', Times, serif; font-size: 14px`, then to add three new body paragraphs, call insertText with the three paragraphs as plain Markdown AND formatting: { fontFamily: \"'Times New Roman', Times, serif\", fontSize: \"14px\" }.",
+          "- If the document has no explicit font/size styling, just use plain Markdown and omit `formatting`.",
+          "",
           "Guidelines:",
           "- When the user asks you to change the writing, make the edit with a tool rather than only describing it.",
           "- Prefer small, targeted editDocument calls over rewriting everything.",
@@ -63,6 +73,10 @@ function systemPrompt(
     "=== CURRENT DOCUMENT ===",
     document.trim().length > 0 ? document : "(the document is empty)",
     "=== END DOCUMENT ===",
+    "",
+    "=== DOCUMENT HTML (shows the exact formatting: fonts, sizes, colors) ===",
+    documentHtml.trim().length > 0 ? documentHtml : "(the document is empty)",
+    "=== END DOCUMENT HTML ===",
     selection.trim().length > 0
       ? `\nThe user currently has this text selected:\n"""${selection}"""`
       : "",
@@ -75,18 +89,20 @@ export async function POST(req: Request) {
   const {
     messages,
     document = "",
+    documentHtml = "",
     selection = "",
     mode = "agent",
   }: {
     messages: UIMessage[];
     document?: string;
+    documentHtml?: string;
     selection?: string;
     mode?: ChatMode;
   } = await req.json();
 
   const result = streamText({
     model: openrouter(MODEL),
-    system: systemPrompt(document, selection, mode),
+    system: systemPrompt(document, documentHtml, selection, mode),
     messages: await convertToModelMessages(messages),
     tools: mode === "ask" ? undefined : editorTools,
     stopWhen: isStepCount(6),

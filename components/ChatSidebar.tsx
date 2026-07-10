@@ -60,6 +60,7 @@ export default function ChatSidebar({
           body: {
             messages,
             document: api?.getPlainText() ?? "",
+            documentHtml: api?.getHtml() ?? "",
             selection: api?.getSelectionText() ?? "",
             mode: modeRef.current,
           },

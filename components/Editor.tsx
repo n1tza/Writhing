@@ -9,6 +9,14 @@ import {
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
+  TextStyle,
+  Color,
+  FontFamily,
+  FontSize,
+} from "@tiptap/extension-text-style";
+import Highlight from "@tiptap/extension-highlight";
+import TextAlign from "@tiptap/extension-text-align";
+import {
   DOMParser as PMDOMParser,
   type Fragment,
   type Node as ProseMirrorNode,
@@ -16,6 +24,7 @@ import {
 } from "@tiptap/pm/model";
 import { marked } from "marked";
 import { DiffDeleteMark, DiffInsertMark } from "@/lib/diffExtensions";
+import EditorToolbar from "@/components/EditorToolbar";
 import {
   createDebouncedSaver,
   loadDocument,
@@ -23,6 +32,7 @@ import {
 } from "@/lib/storage";
 import type {
   EditDocumentInput,
+  Formatting,
   InsertTextInput,
   RewriteDocumentInput,
 } from "@/lib/tools";
@@ -31,6 +41,8 @@ export type EditKind = "editDocument" | "insertText" | "rewriteDocument";
 
 export interface EditorApi {
   getPlainText: () => string;
+  /** Current document as HTML, so the assistant can see the formatting in use. */
+  getHtml: () => string;
   getSelectionText: () => string;
   /** Show a proposed edit inline as a diff. Returns false if it couldn't be shown. */
   proposeEdit: (id: string, kind: EditKind, input: unknown) => boolean;
@@ -92,6 +104,23 @@ function gatherDiffEnds(doc: ProseMirrorNode): Map<string, number> {
   return ends;
 }
 
+function normalizeFontSize(size: string): string {
+  const trimmed = size.trim();
+  return /^\d+(\.\d+)?$/.test(trimmed) ? `${trimmed}px` : trimmed;
+}
+
+/** Build a textStyle mark attribute object from the model's formatting field. */
+function formattingAttrs(
+  formatting?: Formatting,
+): Record<string, string> | null {
+  if (!formatting) return null;
+  const attrs: Record<string, string> = {};
+  if (formatting.fontFamily) attrs.fontFamily = formatting.fontFamily;
+  if (formatting.fontSize) attrs.fontSize = normalizeFontSize(formatting.fontSize);
+  if (formatting.color) attrs.color = formatting.color;
+  return Object.keys(attrs).length > 0 ? attrs : null;
+}
+
 export default function Editor({
   apiRef,
   diffHandlersRef,
@@ -101,7 +130,10 @@ export default function Editor({
 }) {
   const debouncedSave = useRef(createDebouncedSaver(500));
   const pendingRewrites = useRef(
-    new Map<string, { oldHtml: string; newHtml: string }>(),
+    new Map<
+      string,
+      { oldHtml: string; newHtml: string; formatting?: Formatting }
+    >(),
   );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [pills, setPills] = useState<Pill[]>([]);
@@ -110,6 +142,12 @@ export default function Editor({
     immediatelyRender: false,
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      TextStyle,
+      Color,
+      FontFamily,
+      FontSize,
+      Highlight.configure({ multicolor: true }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
       DiffInsertMark,
       DiffDeleteMark,
     ],
@@ -223,6 +261,7 @@ export default function Editor({
 
     const api: EditorApi = {
       getPlainText: () => editor.getText(),
+      getHtml: () => editor.getHTML(),
       getSelectionText: () => {
         const { from, to } = editor.state.selection;
         if (from === to) return "";
@@ -232,9 +271,29 @@ export default function Editor({
       proposeEdit: (id, kind, input) => {
         const { schema } = editor.state;
 
-        const insertFragment = (tr: typeof editor.state.tr, at: number, frag: Fragment) => {
+        // Apply font/size/color uniformly across a range as a textStyle mark,
+        // so multi-paragraph insertions all share the formatting (a single
+        // inline <span> cannot cross paragraph boundaries).
+        const applyFormatting = (
+          tr: typeof editor.state.tr,
+          from: number,
+          to: number,
+          formatting?: Formatting,
+        ) => {
+          const attrs = formattingAttrs(formatting);
+          if (!attrs || !schema.marks.textStyle) return;
+          tr.addMark(from, to, schema.marks.textStyle.create(attrs));
+        };
+
+        const insertFragment = (
+          tr: typeof editor.state.tr,
+          at: number,
+          frag: Fragment,
+          formatting?: Formatting,
+        ) => {
           if (frag.size === 0) return false;
           tr.insert(at, frag);
+          applyFormatting(tr, at, at + frag.size, formatting);
           tr.addMark(
             at,
             at + frag.size,
@@ -244,7 +303,7 @@ export default function Editor({
         };
 
         if (kind === "editDocument") {
-          const { find, replace } = input as EditDocumentInput;
+          const { find, replace, formatting } = input as EditDocumentInput;
           const range = findRange(find);
           if (!range) return false;
           const tr = editor.state.tr;
@@ -258,6 +317,7 @@ export default function Editor({
               tr,
               range.to,
               parseInlineHtml(schema, inlineMarkdownToHtml(replace)),
+              formatting,
             );
           }
           editor.view.dispatch(tr);
@@ -265,7 +325,7 @@ export default function Editor({
         }
 
         if (kind === "insertText") {
-          const { text, position } = input as InsertTextInput;
+          const { text, position, formatting } = input as InsertTextInput;
           if (!text.trim()) return false;
           const tr = editor.state.tr;
           const ok =
@@ -274,11 +334,13 @@ export default function Editor({
                   tr,
                   editor.state.selection.from,
                   parseInlineHtml(schema, inlineMarkdownToHtml(text)),
+                  formatting,
                 )
               : insertFragment(
                   tr,
                   editor.state.doc.content.size,
                   parseBlockHtml(schema, markdownToHtml(text)),
+                  formatting,
                 );
           if (!ok) return false;
           editor.view.dispatch(tr);
@@ -286,12 +348,13 @@ export default function Editor({
         }
 
         if (kind === "rewriteDocument") {
-          const { content } = input as RewriteDocumentInput;
+          const { content, formatting } = input as RewriteDocumentInput;
           if (!content.trim()) return false;
           const newHtml = markdownToHtml(content);
           pendingRewrites.current.set(id, {
             oldHtml: editor.getHTML(),
             newHtml,
+            formatting,
           });
           const tr = editor.state.tr;
           tr.addMark(
@@ -303,6 +366,7 @@ export default function Editor({
             tr,
             editor.state.doc.content.size,
             parseBlockHtml(schema, newHtml),
+            formatting,
           );
           if (!ok) return false;
           editor.view.dispatch(tr);
@@ -317,6 +381,16 @@ export default function Editor({
         if (rewrite) {
           pendingRewrites.current.delete(id);
           editor.chain().setContent(rewrite.newHtml).focus("end").run();
+          const attrs = formattingAttrs(rewrite.formatting);
+          if (attrs && editor.state.schema.marks.textStyle) {
+            const tr = editor.state.tr;
+            tr.addMark(
+              0,
+              editor.state.doc.content.size,
+              editor.state.schema.marks.textStyle.create(attrs),
+            );
+            editor.view.dispatch(tr);
+          }
           saveClean();
           return;
         }
@@ -368,11 +442,13 @@ export default function Editor({
   }, [editor, apiRef]);
 
   return (
-    <div
-      ref={containerRef}
-      className="relative mx-auto w-full max-w-3xl px-10 py-16"
-    >
-      <EditorContent editor={editor} />
+    <>
+      {editor && <EditorToolbar editor={editor} />}
+      <div
+        ref={containerRef}
+        className="relative mx-auto w-full max-w-3xl px-10 py-16"
+      >
+        <EditorContent editor={editor} />
 
       {pills.map((pill) => (
         <div
@@ -424,6 +500,7 @@ export default function Editor({
           </button>
         </div>
       ))}
-    </div>
+      </div>
+    </>
   );
 }

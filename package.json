@@ -11,14 +11,20 @@
   "dependencies": {
     "@ai-sdk/react": "^4.0.19",
     "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@tiptap/extension-color": "^3.27.3",
+    "@tiptap/extension-highlight": "^3.27.3",
+    "@tiptap/extension-text-align": "^3.27.3",
+    "@tiptap/extension-text-style": "^3.27.3",
     "@tiptap/pm": "^3.27.3",
     "@tiptap/react": "^3.27.3",
     "@tiptap/starter-kit": "^3.27.3",
     "ai": "^7.0.18",
+    "html-docx-js-typescript": "^0.1.5",
     "marked": "^14.1.4",
     "next": "16.2.10",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "turndown": "^7.2.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -26,6 +32,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/turndown": "^5.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
