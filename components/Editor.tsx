@@ -215,14 +215,38 @@ export default function Editor({
         .replace(/[\u2013\u2014]/g, "-")
         .replace(/\u00A0/g, " ");
 
+    // Collapse runs of whitespace to a single space, keeping a map from each
+    // collapsed-string index back into the source character array. Lets a
+    // multi-paragraph snippet match regardless of how many blank lines separate
+    // paragraphs in the document vs. the snippet the model copied.
+    const collapseWhitespace = (chars: string[]) => {
+      let s = "";
+      const map: number[] = [];
+      let inWs = false;
+      for (let i = 0; i < chars.length; i++) {
+        if (/\s/.test(chars[i])) {
+          if (!inWs) {
+            s += " ";
+            map.push(i);
+            inWs = true;
+          }
+        } else {
+          s += chars[i];
+          map.push(i);
+          inWs = false;
+        }
+      }
+      return { s, map };
+    };
+
     const findRange = (rawFind: string): { from: number; to: number } | null => {
       const find = rawFind.trim();
       if (!find) return null;
       const normFind = normalize(find);
 
+      // 1) Fast path: match inside a single text block, preserving exact offsets
+      // (survives formatting splits like a bold word within a paragraph).
       let result: { from: number; to: number } | null = null;
-      // Search each text block's full text so matches survive formatting splits
-      // (e.g. a bold word) within a paragraph.
       editor.state.doc.descendants((node, pos) => {
         if (result) return false;
         if (node.isTextblock) {
@@ -235,7 +259,40 @@ export default function Editor({
         }
         return true;
       });
-      return result;
+      if (result) return result;
+
+      // 2) Cross-block match: flatten all text into one string with a position
+      // map, so a snippet spanning multiple paragraphs can still be located.
+      const flat: string[] = [];
+      const posMap: number[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.isTextblock) {
+          const text = normalize(node.textContent);
+          for (let i = 0; i < text.length; i++) {
+            flat.push(text[i]);
+            posMap.push(pos + 1 + i);
+          }
+          // Represent the paragraph break as a newline positioned at the block's
+          // content end, so it never becomes part of an accepted range.
+          flat.push("\n");
+          posMap.push(pos + 1 + node.content.size);
+          return false;
+        }
+        return true;
+      });
+
+      const hay = collapseWhitespace(flat);
+      const needle = collapseWhitespace(normFind.split("")).s.trim();
+      if (!needle) return null;
+      const at = hay.s.indexOf(needle);
+      if (at === -1) return null;
+
+      const startFlat = hay.map[at];
+      const endFlat = hay.map[at + needle.length - 1];
+      const from = posMap[startFlat];
+      const to = posMap[endFlat];
+      if (typeof from !== "number" || typeof to !== "number") return null;
+      return { from, to: to + 1 };
     };
 
     const collectRanges = (id: string, markName: string) => {

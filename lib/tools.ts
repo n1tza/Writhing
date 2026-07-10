@@ -57,10 +57,26 @@ export const rewriteDocumentSchema = z.object({
   reason: z.string().describe("A short explanation of the rewrite."),
 });
 
+export const planTasksSchema = z.object({
+  tasks: z
+    .array(
+      z
+        .string()
+        .describe(
+          "One discrete, action-oriented task, e.g. 'Rename the Chapter 1 heading to its real title'.",
+        ),
+    )
+    .min(2)
+    .describe(
+      "Ordered list of 2 or more tasks. Put dependent tasks (e.g. coloring a new title) AFTER the tasks they depend on.",
+    ),
+});
+
 export type Formatting = z.infer<typeof formattingSchema>;
 export type EditDocumentInput = z.infer<typeof editDocumentSchema>;
 export type InsertTextInput = z.infer<typeof insertTextSchema>;
 export type RewriteDocumentInput = z.infer<typeof rewriteDocumentSchema>;
+export type PlanTasksInput = z.infer<typeof planTasksSchema>;
 
 export const editorTools = {
   editDocument: {
@@ -77,6 +93,11 @@ export const editorTools = {
     description:
       "Replace the entire document with new content. Use only for large-scale rewrites or when the user explicitly asks to rewrite the whole document. The 'content' may use Markdown for structure. Set the 'formatting' field to apply a consistent font/size/color across the whole document; use inline <span style=\"...\"> / <mark> only for localized style differences.",
     inputSchema: rewriteDocumentSchema,
+  },
+  planTasks: {
+    description:
+      "Break a complex or multi-part request into an ordered list of discrete tasks, so you can complete them one at a time. Call this FIRST and ALONE (do not make any edits in the same turn) whenever a request has multiple steps, or when later steps depend on earlier ones (e.g. 'rename the chapter titles, then color the new titles blue' — the coloring depends on the rename being applied first). Order tasks so dependent steps come after what they rely on. After you call this, you will be prompted to complete each task one at a time. Do NOT call this for a single, simple edit.",
+    inputSchema: planTasksSchema,
   },
 } as const;
 

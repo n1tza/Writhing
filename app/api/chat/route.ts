@@ -42,6 +42,7 @@ function systemPrompt(
           "- editDocument: replace an exact snippet of existing text. The 'find' value MUST be copied verbatim from the current document, and should be a short, unique snippet.",
           "- insertText: add new text at the cursor or the end of the document.",
           "- rewriteDocument: replace the whole document (use sparingly, only for full rewrites).",
+          "- planTasks: break a complex/multi-step request into an ordered task list.",
           "",
           "Formatting: the text you write in these tools is interpreted as Markdown, so you CAN format the writing. Use **bold**, *italic*, ~~strikethrough~~, `code`, headings (#, ##, ###), bullet lists (-), numbered lists (1.), and > blockquotes as appropriate. To format existing text (e.g. 'make X bold'), use editDocument with the same words wrapped in Markdown.",
           "",
@@ -53,6 +54,15 @@ function systemPrompt(
           "- Only use inline HTML for styling PART of a paragraph differently: `<span style=\"color: #f87171\">word</span>` for a colored word, or `<mark style=\"background-color: #fde68a\">word</mark>` for a highlight.",
           "- Example: if body text in the HTML uses `font-family: 'Times New Roman', Times, serif; font-size: 14px`, then to add three new body paragraphs, call insertText with the three paragraphs as plain Markdown AND formatting: { fontFamily: \"'Times New Roman', Times, serif\", fontSize: \"14px\" }.",
           "- If the document has no explicit font/size styling, just use plain Markdown and omit `formatting`.",
+          "- 'Monospace' means an actual monospaced font family, e.g. fontFamily: \"ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace\" — NOT Arial or any sans/serif font.",
+          "- To restyle existing paragraphs (e.g. 'make the body monospace and white'), keep the same words but set the `formatting` field. Do one editDocument per paragraph (find that paragraph's exact text), or use rewriteDocument with `formatting` when restyling the entire document at once.",
+          "",
+          "TASK WORKFLOW (for complex or multi-step requests):",
+          "- If a request has multiple distinct parts, or later steps depend on earlier ones, FIRST call planTasks with an ordered list of tasks — and call NOTHING else in that turn (no edits yet).",
+          "- Order tasks so that any step depending on a previous one comes AFTER it. For example, renaming a heading must come BEFORE coloring that new heading, because you can only find-and-replace text that already exists in the document.",
+          "- After planTasks, you will be prompted to complete ONE task at a time. For each prompt, make only that task's edits, then stop and wait. Do not jump ahead to other tasks.",
+          "- Between tasks, the CURRENT DOCUMENT is refreshed to include the edits already accepted, so always copy 'find' snippets from the latest CURRENT DOCUMENT — never from text you proposed but that has not been applied yet.",
+          "- For a single, simple request, skip planTasks and just make the edit.",
           "",
           "Guidelines:",
           "- When the user asks you to change the writing, make the edit with a tool rather than only describing it.",
@@ -65,7 +75,8 @@ function systemPrompt(
           "- The CURRENT DOCUMENT shown below is always the latest version, already including any edits the user has accepted. Trust it as the source of truth.",
           "- NEVER add text that already appears in the document. Before inserting, check that the content is not already present.",
           "- When continuing or extending writing, only add the NEW portion. Do not repeat existing sentences.",
-          "- Make all the edits for a single user request in ONE response (you may call multiple tools at once). After your edits, stop. Do not keep adding more text unless the user asks again.",
+          "- For a single request, make all the edits in ONE response (you may call multiple tools at once) unless you used planTasks, in which case make only the current task's edits. After your edits, stop. Do not keep adding more text unless the user asks again.",
+          "- If an edit repeatedly fails because the 'find' text can't be located, STOP retrying the same snippet: re-read the CURRENT DOCUMENT and either copy a shorter exact snippet or take a different approach.",
           "",
         ];
 
@@ -105,7 +116,7 @@ export async function POST(req: Request) {
     system: systemPrompt(document, documentHtml, selection, mode),
     messages: await convertToModelMessages(messages),
     tools: mode === "ask" ? undefined : editorTools,
-    stopWhen: isStepCount(6),
+    stopWhen: isStepCount(8),
   });
 
   return result.toUIMessageStreamResponse();
