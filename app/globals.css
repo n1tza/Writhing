@@ -35,6 +35,108 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Shared interaction language: clear affordances and tactile presses without
+   making the interface feel busy. */
+button:not(:disabled),
+a[href],
+[role="button"],
+select,
+summary,
+label[for],
+input[type="checkbox"],
+input[type="radio"],
+input[type="color"] {
+  cursor: pointer;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+button,
+a,
+[role="button"] {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ui-popover {
+  transform-origin: top left;
+  animation: ui-popover-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.ui-panel-enter {
+  animation: ui-panel-in 220ms ease-out both;
+}
+
+.ui-focus-ring {
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background-color 150ms ease;
+}
+
+.ui-focus-ring:focus-within {
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.09);
+}
+
+@keyframes ui-popover-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+    translate: 0 -4px;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes ui-panel-in {
+  from {
+    opacity: 0;
+    translate: 0 3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button:not(:disabled),
+  a[href],
+  [role="button"] {
+    transition:
+      color 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease,
+      box-shadow 140ms ease,
+      opacity 140ms ease,
+      scale 90ms ease,
+      translate 90ms ease;
+  }
+
+  button:not(:disabled):active,
+  a[href]:active,
+  [role="button"]:active {
+    scale: 0.97;
+    translate: 0 1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Thin, subtle scrollbars for the clean look */
 * {
   scrollbar-width: thin;

@@ -407,7 +407,7 @@ export default function ChatSidebar({
         }}
         className="p-3"
       >
-        <div className="rounded-xl border border-[var(--border-subtle)] bg-white/[0.03] p-1.5 transition-colors focus-within:border-white/20">
+        <div className="ui-focus-ring rounded-xl border border-[var(--border-subtle)] bg-white/[0.03] p-1.5 focus-within:border-white/20">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}

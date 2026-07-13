@@ -61,26 +61,12 @@ export default function Home() {
 
   return (
     <div className="flex h-screen w-full flex-col bg-[var(--app-bg)] text-[var(--text-primary)]">
-      <header className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.06] text-[13px] font-semibold text-zinc-100 ring-1 ring-white/10">
-            W
-          </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-sm font-semibold tracking-tight text-zinc-100">
-              Writhing
-            </span>
-            <span className="text-xs text-zinc-500">the cursor for writing</span>
-          </div>
-        </div>
-        <span className="flex items-center gap-1.5 text-xs text-zinc-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80" />
-          Saved locally
-        </span>
+      <header className="relative z-40 shrink-0 border-b border-[var(--border-subtle)] bg-[var(--panel-bg)]">
+        <div id="editor-toolbar-slot" />
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-1.5 px-2 pb-2">
-        <main className="min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--doc-canvas)]">
+      <div className="flex min-h-0 flex-1 gap-1.5 p-2">
+        <main className="ui-panel-enter min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--doc-canvas)]">
           <Editor apiRef={editorApiRef} diffHandlersRef={diffHandlersRef} />
         </main>
 
@@ -106,7 +92,7 @@ export default function Home() {
 
         <aside
           style={{ width: sidebarWidth }}
-          className="shrink-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]"
+          className="ui-panel-enter shrink-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]"
         >
           <ChatSidebar
             editorApiRef={editorApiRef}

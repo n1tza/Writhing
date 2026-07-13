@@ -4,12 +4,15 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { createPortal } from "react-dom";
 import { type Editor } from "@tiptap/core";
 import { useEditorState } from "@tiptap/react";
+import Link from "next/link";
 import { exportDocument, type ExportFormat } from "@/lib/export";
 import {
   clampMargin,
@@ -90,7 +93,7 @@ function Popover({
   return (
     <div
       ref={ref}
-      className={`absolute top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--panel-elevated)] py-1 shadow-xl ${
+      className={`ui-popover absolute top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-[var(--border-subtle)] bg-[var(--panel-elevated)] py-1 shadow-xl ${
         align === "right" ? "right-0" : "left-0"
       }`}
     >
@@ -119,6 +122,41 @@ function MenuItem({
     >
       {children}
     </button>
+  );
+}
+
+function HeaderMenu({
+  label,
+  open,
+  onToggle,
+  onClose,
+  children,
+}: {
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={onToggle}
+        className={`rounded-md px-2.5 py-1 text-sm transition-colors ${
+          open
+            ? "bg-white/[0.1] text-white"
+            : "text-zinc-300 hover:bg-white/[0.07] hover:text-white"
+        }`}
+      >
+        {label}
+      </button>
+      <Popover open={open} onClose={onClose}>
+        {children}
+      </Popover>
+    </div>
   );
 }
 
@@ -159,6 +197,7 @@ const FONT_FAMILIES: { label: string; value: string | null }[] = [
 // export. 12pt is a standard body size (= 16px on screen at 96dpi).
 const DEFAULT_FONT_SIZE = 12;
 const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72];
+const DOCUMENT_TITLE_KEY = "writhing:documentTitle";
 
 export default function EditorToolbar({
   editor,
@@ -173,9 +212,25 @@ export default function EditorToolbar({
   const [sizeOpen, setSizeOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [highlightOpen, setHighlightOpen] = useState(false);
-  const [pageOpen, setPageOpen] = useState(false);
-  const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [menuOpen, setMenuOpen] = useState<
+    "file" | "edit" | "insert" | "format" | null
+  >(null);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const toolbarTarget = useSyncExternalStore(
+    () => () => {},
+    () => document.getElementById("editor-toolbar-slot"),
+    () => null,
+  );
+
+  useEffect(() => {
+    const input = titleInputRef.current;
+    if (!input) return;
+    const stored = window.localStorage.getItem(DOCUMENT_TITLE_KEY)?.trim();
+    const title = stored || "Untitled document";
+    input.value = title;
+    document.title = `${title} — Writhing`;
+  }, [toolbarTarget]);
 
   const state = useEditorState({
     editor,
@@ -252,8 +307,15 @@ export default function EditorToolbar({
     setPageSettings((prev) => ({ ...prev, margins }));
   };
 
+  const saveDocumentTitle = (value: string): string => {
+    const title = value.trim() || "Untitled document";
+    window.localStorage.setItem(DOCUMENT_TITLE_KEY, title);
+    document.title = `${title} — Writhing`;
+    return title;
+  };
+
   const runExport = async (format: ExportFormat) => {
-    setExportOpen(false);
+    setMenuOpen(null);
     setExporting(format);
     try {
       await exportDocument(editor, format, pageSettings);
@@ -265,8 +327,253 @@ export default function EditorToolbar({
     }
   };
 
-  return (
-    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-0.5 border-b border-[var(--border-subtle)] bg-[var(--panel-bg)]/95 px-2 py-1.5 backdrop-blur">
+  if (!toolbarTarget) return null;
+
+  return createPortal(
+    <div className="bg-[var(--panel-bg)]">
+      <div className="flex items-stretch gap-3 px-3 py-2">
+        <Link
+          href="/"
+          title="Writhing home"
+          aria-label="Writhing home"
+          className="flex h-14 w-11 shrink-0 items-center justify-center self-center rounded-xl bg-blue-500/15 text-lg font-semibold text-blue-300 ring-1 ring-blue-400/20 transition-colors hover:bg-blue-500/25 hover:text-blue-200"
+        >
+          W
+        </Link>
+        <div className="min-w-0 flex-1">
+          <div className="flex h-7 items-center gap-3">
+            <input
+              ref={titleInputRef}
+              type="text"
+              defaultValue="Untitled document"
+              aria-label="Document title"
+              onChange={(event) => {
+                const title = event.currentTarget.value.trim();
+                if (title) {
+                  window.localStorage.setItem(DOCUMENT_TITLE_KEY, title);
+                  document.title = `${title} — Writhing`;
+                }
+              }}
+              onBlur={(event) => {
+                event.currentTarget.value = saveDocumentTitle(
+                  event.currentTarget.value,
+                );
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="min-w-0 max-w-sm flex-1 rounded-md border border-transparent bg-transparent px-2 py-0.5 text-base font-medium text-zinc-100 outline-none transition-colors hover:border-white/10 focus:border-white/20 focus:bg-white/[0.035]"
+            />
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 px-2 text-xs text-zinc-500">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80" />
+              {exporting ? "Exporting…" : "Saved locally"}
+            </span>
+          </div>
+          <div
+            role="menubar"
+            aria-label="Document menus"
+            className="flex h-7 items-center gap-0.5"
+          >
+        <HeaderMenu
+          label="File"
+          open={menuOpen === "file"}
+          onToggle={() => setMenuOpen((open) => (open === "file" ? null : "file"))}
+          onClose={() => setMenuOpen(null)}
+        >
+          <MenuItem onClick={() => runExport("pdf")}>Download PDF (.pdf)</MenuItem>
+          <MenuItem onClick={() => runExport("docx")}>Download Word (.docx)</MenuItem>
+          <MenuItem onClick={() => runExport("markdown")}>
+            Download Markdown (.md)
+          </MenuItem>
+          <MenuItem onClick={() => runExport("txt")}>
+            Download plain text (.txt)
+          </MenuItem>
+        </HeaderMenu>
+        <HeaderMenu
+          label="Edit"
+          open={menuOpen === "edit"}
+          onToggle={() => setMenuOpen((open) => (open === "edit" ? null : "edit"))}
+          onClose={() => setMenuOpen(null)}
+        >
+          <MenuItem
+            onClick={() => {
+              chain().undo().run();
+              setMenuOpen(null);
+            }}
+          >
+            Undo
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              chain().redo().run();
+              setMenuOpen(null);
+            }}
+          >
+            Redo
+          </MenuItem>
+        </HeaderMenu>
+        <HeaderMenu
+          label="Insert"
+          open={menuOpen === "insert"}
+          onToggle={() =>
+            setMenuOpen((open) => (open === "insert" ? null : "insert"))
+          }
+          onClose={() => setMenuOpen(null)}
+        >
+          <MenuItem
+            onClick={() => {
+              setLink();
+              setMenuOpen(null);
+            }}
+          >
+            Link
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              chain().setHorizontalRule().run();
+              setMenuOpen(null);
+            }}
+          >
+            Horizontal line
+          </MenuItem>
+        </HeaderMenu>
+        <HeaderMenu
+          label="Format"
+          open={menuOpen === "format"}
+          onToggle={() =>
+            setMenuOpen((open) => (open === "format" ? null : "format"))
+          }
+          onClose={() => setMenuOpen(null)}
+        >
+          <MenuItem
+            active={state.isBold}
+            onClick={() => {
+              chain().toggleBold().run();
+              setMenuOpen(null);
+            }}
+          >
+            Bold
+          </MenuItem>
+          <MenuItem
+            active={state.isItalic}
+            onClick={() => {
+              chain().toggleItalic().run();
+              setMenuOpen(null);
+            }}
+          >
+            Italic
+          </MenuItem>
+          <MenuItem
+            active={state.isUnderline}
+            onClick={() => {
+              chain().toggleUnderline().run();
+              setMenuOpen(null);
+            }}
+          >
+            Underline
+          </MenuItem>
+          <MenuItem
+            active={state.isStrike}
+            onClick={() => {
+              chain().toggleStrike().run();
+              setMenuOpen(null);
+            }}
+          >
+            Strikethrough
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              chain().unsetAllMarks().clearNodes().run();
+              setMenuOpen(null);
+            }}
+          >
+            Clear formatting
+          </MenuItem>
+          <div className="my-1 border-t border-[var(--border-subtle)]" />
+          <div className="w-64 p-3">
+            <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Page margins (inches)
+            </div>
+            <div className="mb-2 flex flex-wrap gap-1">
+              {MARGIN_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyPreset(preset.margins)}
+                  className="rounded-md border border-[var(--border-subtle)] px-2 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white"
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <MarginField
+                label="Top"
+                value={pageSettings.margins.top}
+                onChange={(value) => setMargin("top", value)}
+              />
+              <MarginField
+                label="Bottom"
+                value={pageSettings.margins.bottom}
+                onChange={(value) => setMargin("bottom", value)}
+              />
+              <MarginField
+                label="Left"
+                value={pageSettings.margins.left}
+                onChange={(value) => setMargin("left", value)}
+              />
+              <MarginField
+                label="Right"
+                value={pageSettings.margins.right}
+                onChange={(value) => setMargin("right", value)}
+              />
+            </div>
+
+            <div className="mb-1.5 mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Line spacing
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {LINE_SPACING_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setLineHeight(option.value)}
+                  className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                    pageSettings.lineHeight === option.value
+                      ? "border-white/20 bg-white/[0.12] text-white"
+                      : "border-[var(--border-subtle)] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <label className="mt-3 block text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Paragraph spacing (pt)
+              <input
+                type="number"
+                min={0}
+                max={72}
+                step={1}
+                value={pageSettings.paragraphSpacing}
+                onChange={(e) => setParagraphSpacing(e.target.valueAsNumber)}
+                className="mt-1.5 w-full rounded-md border border-[var(--border-subtle)] bg-[var(--panel-bg)] px-2 py-1 text-sm font-normal normal-case text-zinc-100 outline-none focus:border-white/25"
+              />
+            </label>
+          </div>
+        </HeaderMenu>
+          </div>
+        </div>
+      </div>
+
+      <div
+        role="toolbar"
+        aria-label="Document formatting"
+        className="mx-2 mb-2 flex flex-wrap items-center gap-0.5 overflow-visible rounded-xl border border-[var(--border-subtle)] bg-white/[0.035] px-2 py-1 shadow-sm"
+      >
       <ToolbarButton
         title="Undo"
         onClick={() => chain().undo().run()}
@@ -569,132 +876,9 @@ export default function EditorToolbar({
       >
         <Icon path="M4 7V5h13M9 5l-4 14M14 11l6 6M20 11l-6 6" />
       </ToolbarButton>
-
-      <div className="ml-auto flex items-center gap-1 pl-2">
-        {/* Page setup: margins + line/paragraph spacing */}
-        <div className="relative">
-          <button
-            type="button"
-            title="Page setup"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setPageOpen((o) => !o)}
-            className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white"
-          >
-            <Icon
-              path="M4 4h16v16H4zM4 8h16M8 4v16"
-              className="h-4 w-4"
-            />
-            <span className="hidden sm:inline">Layout</span>
-            <Chevron />
-          </button>
-          <Popover open={pageOpen} onClose={() => setPageOpen(false)} align="right">
-            <div className="w-64 p-3">
-              <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Margins (inches)
-              </div>
-              <div className="mb-2 flex flex-wrap gap-1">
-                {MARGIN_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => applyPreset(preset.margins)}
-                    className="rounded-md border border-[var(--border-subtle)] px-2 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white"
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <MarginField
-                  label="Top"
-                  value={pageSettings.margins.top}
-                  onChange={(v) => setMargin("top", v)}
-                />
-                <MarginField
-                  label="Bottom"
-                  value={pageSettings.margins.bottom}
-                  onChange={(v) => setMargin("bottom", v)}
-                />
-                <MarginField
-                  label="Left"
-                  value={pageSettings.margins.left}
-                  onChange={(v) => setMargin("left", v)}
-                />
-                <MarginField
-                  label="Right"
-                  value={pageSettings.margins.right}
-                  onChange={(v) => setMargin("right", v)}
-                />
-              </div>
-
-              <div className="mb-1.5 mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Line spacing
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {LINE_SPACING_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => setLineHeight(option.value)}
-                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
-                      pageSettings.lineHeight === option.value
-                        ? "border-white/20 bg-white/[0.12] text-white"
-                        : "border-[var(--border-subtle)] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mb-1.5 mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
-                Paragraph spacing (pt)
-              </div>
-              <input
-                type="number"
-                min={0}
-                max={72}
-                step={1}
-                value={pageSettings.paragraphSpacing}
-                onChange={(e) => setParagraphSpacing(e.target.valueAsNumber)}
-                className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--panel-bg)] px-2 py-1 text-sm text-zinc-100 outline-none focus:border-white/25"
-              />
-            </div>
-          </Popover>
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => setExportOpen((o) => !o)}
-            disabled={exporting !== null}
-            className="flex h-8 items-center gap-1.5 rounded-md border border-[var(--border-subtle)] px-3 text-sm text-zinc-200 transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-50"
-          >
-            <Icon
-              path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"
-              className="h-4 w-4"
-            />
-            {exporting ? "Exporting..." : "Export"}
-            <Chevron />
-          </button>
-          <Popover
-            open={exportOpen}
-            onClose={() => setExportOpen(false)}
-            align="right"
-          >
-            <MenuItem onClick={() => runExport("pdf")}>PDF (.pdf)</MenuItem>
-            <MenuItem onClick={() => runExport("docx")}>Word (.docx)</MenuItem>
-            <MenuItem onClick={() => runExport("markdown")}>
-              Markdown (.md)
-            </MenuItem>
-            <MenuItem onClick={() => runExport("txt")}>Plain text (.txt)</MenuItem>
-          </Popover>
-        </div>
-      </div>
     </div>
+    </div>,
+    toolbarTarget,
   );
 }
 
