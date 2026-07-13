@@ -80,7 +80,7 @@ export default function Home() {
       </header>
 
       <div className="flex min-h-0 flex-1 gap-1.5 px-2 pb-2">
-        <main className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]">
+        <main className="min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--doc-canvas)]">
           <Editor apiRef={editorApiRef} diffHandlersRef={diffHandlersRef} />
         </main>
 

@@ -11,7 +11,7 @@ export const formattingSchema = z
     fontSize: z
       .string()
       .optional()
-      .describe('CSS font size applied to ALL of this text, e.g. "14px" or "20px".'),
+      .describe('CSS font size applied to ALL of this text, in points, e.g. "12pt" or "18pt".'),
     color: z
       .string()
       .optional()

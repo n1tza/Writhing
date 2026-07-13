@@ -4,11 +4,20 @@ import {
   useEffect,
   useRef,
   useState,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { type Editor } from "@tiptap/core";
 import { useEditorState } from "@tiptap/react";
 import { exportDocument, type ExportFormat } from "@/lib/export";
+import {
+  clampMargin,
+  LINE_SPACING_OPTIONS,
+  MARGIN_PRESETS,
+  type Margins,
+  type PageSettings,
+} from "@/lib/pageSettings";
 
 function ToolbarButton({
   onClick,
@@ -113,21 +122,23 @@ function MenuItem({
   );
 }
 
+// Saturated inks that stay readable as text on a white page.
 const TEXT_COLORS = [
-  "#e7e7ea",
-  "#f87171",
-  "#fb923c",
-  "#facc15",
-  "#4ade80",
-  "#60a5fa",
-  "#a78bfa",
-  "#f472b6",
+  "#1b1b1b",
+  "#6b7280",
+  "#b91c1c",
+  "#c2410c",
+  "#a16207",
+  "#15803d",
+  "#1d4ed8",
+  "#6d28d9",
 ];
 
+// Light highlighter tones that keep black text legible on white.
 const HIGHLIGHT_COLORS = [
   "#fde68a",
-  "#bbf7d0",
-  "#bfdbfe",
+  "#a7f3d0",
+  "#bae6fd",
   "#fbcfe8",
   "#ddd6fe",
   "#fecaca",
@@ -144,14 +155,25 @@ const FONT_FAMILIES: { label: string; value: string | null }[] = [
   { label: "Courier New", value: "'Courier New', Courier, monospace" },
 ];
 
-const DEFAULT_FONT_SIZE = 17;
-const FONT_SIZES = [12, 14, 16, 17, 18, 20, 24, 30, 36, 48, 60, 72];
+// Font sizes are in points (pt), matching word processors and the PDF/DOCX
+// export. 12pt is a standard body size (= 16px on screen at 96dpi).
+const DEFAULT_FONT_SIZE = 12;
+const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 30, 36, 48, 60, 72];
 
-export default function EditorToolbar({ editor }: { editor: Editor }) {
+export default function EditorToolbar({
+  editor,
+  pageSettings,
+  setPageSettings,
+}: {
+  editor: Editor;
+  pageSettings: PageSettings;
+  setPageSettings: Dispatch<SetStateAction<PageSettings>>;
+}) {
   const [fontOpen, setFontOpen] = useState(false);
   const [sizeOpen, setSizeOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [highlightOpen, setHighlightOpen] = useState(false);
+  const [pageOpen, setPageOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
 
@@ -195,8 +217,8 @@ export default function EditorToolbar({ editor }: { editor: Editor }) {
     : DEFAULT_FONT_SIZE;
 
   const applyFontSize = (size: number) => {
-    const clamped = Math.min(Math.max(size, 8), 96);
-    chain().setFontSize(`${clamped}px`).run();
+    const clamped = Math.min(Math.max(size, 6), 96);
+    chain().setFontSize(`${clamped}pt`).run();
   };
 
   const setLink = () => {
@@ -210,11 +232,31 @@ export default function EditorToolbar({ editor }: { editor: Editor }) {
     chain().extendMarkRange("link").setLink({ href: url.trim() }).run();
   };
 
+  const setMargin = (side: keyof Margins, value: number) => {
+    setPageSettings((prev) => ({
+      ...prev,
+      margins: { ...prev.margins, [side]: clampMargin(value) },
+    }));
+  };
+
+  const setLineHeight = (value: number) => {
+    setPageSettings((prev) => ({ ...prev, lineHeight: value }));
+  };
+
+  const setParagraphSpacing = (value: number) => {
+    const clamped = Number.isNaN(value) ? 0 : Math.min(Math.max(value, 0), 72);
+    setPageSettings((prev) => ({ ...prev, paragraphSpacing: clamped }));
+  };
+
+  const applyPreset = (margins: Margins) => {
+    setPageSettings((prev) => ({ ...prev, margins }));
+  };
+
   const runExport = async (format: ExportFormat) => {
     setExportOpen(false);
     setExporting(format);
     try {
-      await exportDocument(editor, format);
+      await exportDocument(editor, format, pageSettings);
     } catch (err) {
       console.error("Export failed", err);
       window.alert("Sorry, the export failed. Please try again.");
@@ -372,7 +414,7 @@ export default function EditorToolbar({ editor }: { editor: Editor }) {
           <span className="text-[13px] font-semibold leading-none">A</span>
           <span
             className="mt-0.5 h-1 w-4 rounded-sm"
-            style={{ background: state.color ?? "#e7e7ea" }}
+            style={{ background: state.color ?? "#1b1b1b" }}
           />
         </button>
         <Popover open={colorOpen} onClose={() => setColorOpen(false)}>
@@ -528,7 +570,101 @@ export default function EditorToolbar({ editor }: { editor: Editor }) {
         <Icon path="M4 7V5h13M9 5l-4 14M14 11l6 6M20 11l-6 6" />
       </ToolbarButton>
 
-      <div className="ml-auto flex items-center pl-2">
+      <div className="ml-auto flex items-center gap-1 pl-2">
+        {/* Page setup: margins + line/paragraph spacing */}
+        <div className="relative">
+          <button
+            type="button"
+            title="Page setup"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setPageOpen((o) => !o)}
+            className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white"
+          >
+            <Icon
+              path="M4 4h16v16H4zM4 8h16M8 4v16"
+              className="h-4 w-4"
+            />
+            <span className="hidden sm:inline">Layout</span>
+            <Chevron />
+          </button>
+          <Popover open={pageOpen} onClose={() => setPageOpen(false)} align="right">
+            <div className="w-64 p-3">
+              <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Margins (inches)
+              </div>
+              <div className="mb-2 flex flex-wrap gap-1">
+                {MARGIN_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => applyPreset(preset.margins)}
+                    className="rounded-md border border-[var(--border-subtle)] px-2 py-1 text-xs text-zinc-300 transition-colors hover:bg-white/[0.07] hover:text-white"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <MarginField
+                  label="Top"
+                  value={pageSettings.margins.top}
+                  onChange={(v) => setMargin("top", v)}
+                />
+                <MarginField
+                  label="Bottom"
+                  value={pageSettings.margins.bottom}
+                  onChange={(v) => setMargin("bottom", v)}
+                />
+                <MarginField
+                  label="Left"
+                  value={pageSettings.margins.left}
+                  onChange={(v) => setMargin("left", v)}
+                />
+                <MarginField
+                  label="Right"
+                  value={pageSettings.margins.right}
+                  onChange={(v) => setMargin("right", v)}
+                />
+              </div>
+
+              <div className="mb-1.5 mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Line spacing
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {LINE_SPACING_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setLineHeight(option.value)}
+                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                      pageSettings.lineHeight === option.value
+                        ? "border-white/20 bg-white/[0.12] text-white"
+                        : "border-[var(--border-subtle)] text-zinc-300 hover:bg-white/[0.07] hover:text-white"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mb-1.5 mt-3 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Paragraph spacing (pt)
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={72}
+                step={1}
+                value={pageSettings.paragraphSpacing}
+                onChange={(e) => setParagraphSpacing(e.target.valueAsNumber)}
+                className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--panel-bg)] px-2 py-1 text-sm text-zinc-100 outline-none focus:border-white/25"
+              />
+            </div>
+          </Popover>
+        </div>
+
         <div className="relative">
           <button
             type="button"
@@ -575,6 +711,31 @@ function Icon({ path, className = "h-4 w-4" }: { path: string; className?: strin
     >
       <path d={path} />
     </svg>
+  );
+}
+
+function MarginField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-zinc-400">
+      <span className="w-12 shrink-0">{label}</span>
+      <input
+        type="number"
+        min={0}
+        max={3}
+        step={0.1}
+        value={value}
+        onChange={(e) => onChange(e.target.valueAsNumber)}
+        className="w-full rounded-md border border-[var(--border-subtle)] bg-[var(--panel-bg)] px-2 py-1 text-sm text-zinc-100 outline-none focus:border-white/25"
+      />
+    </label>
   );
 }
 

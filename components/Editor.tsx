@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type MutableRefObject,
 } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -16,6 +17,7 @@ import {
 } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
+import { PaginationPlus } from "tiptap-pagination-plus";
 import {
   DOMParser as PMDOMParser,
   type Fragment,
@@ -30,6 +32,15 @@ import {
   loadDocument,
   saveDocument,
 } from "@/lib/storage";
+import {
+  DEFAULT_PAGE_SETTINGS,
+  DOC_CANVAS,
+  inToPx,
+  LETTER_PAGE,
+  loadPageSettings,
+  savePageSettings,
+  type PageSettings,
+} from "@/lib/pageSettings";
 import type {
   EditDocumentInput,
   Formatting,
@@ -106,7 +117,8 @@ function gatherDiffEnds(doc: ProseMirrorNode): Map<string, number> {
 
 function normalizeFontSize(size: string): string {
   const trimmed = size.trim();
-  return /^\d+(\.\d+)?$/.test(trimmed) ? `${trimmed}px` : trimmed;
+  // Bare numbers are treated as points, matching the toolbar and export.
+  return /^\d+(\.\d+)?$/.test(trimmed) ? `${trimmed}pt` : trimmed;
 }
 
 /** Build a textStyle mark attribute object from the model's formatting field. */
@@ -137,6 +149,8 @@ export default function Editor({
   );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [pills, setPills] = useState<Pill[]>([]);
+  const [pageSettings, setPageSettings] =
+    useState<PageSettings>(DEFAULT_PAGE_SETTINGS);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -148,6 +162,23 @@ export default function Editor({
       FontSize,
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      PaginationPlus.configure({
+        pageWidth: LETTER_PAGE.width,
+        pageHeight: LETTER_PAGE.height,
+        marginTop: inToPx(DEFAULT_PAGE_SETTINGS.margins.top),
+        marginBottom: inToPx(DEFAULT_PAGE_SETTINGS.margins.bottom),
+        marginLeft: inToPx(DEFAULT_PAGE_SETTINGS.margins.left),
+        marginRight: inToPx(DEFAULT_PAGE_SETTINGS.margins.right),
+        contentMarginTop: 0,
+        contentMarginBottom: 0,
+        pageGap: 24,
+        pageBreakBackground: DOC_CANVAS,
+        pageGapBorderColor: "transparent",
+        footerLeft: "",
+        footerRight: "",
+        headerLeft: "",
+        headerRight: "",
+      }),
       DiffInsertMark,
       DiffDeleteMark,
     ],
@@ -161,6 +192,31 @@ export default function Editor({
       }
     },
   });
+
+  // Load persisted page settings on the client (kept out of the initial render
+  // so server and first client render agree on the default layout).
+  useEffect(() => {
+    setPageSettings(loadPageSettings());
+  }, []);
+
+  useEffect(() => {
+    savePageSettings(pageSettings);
+  }, [pageSettings]);
+
+  // Push the page size + margins into the pagination extension whenever the
+  // settings change, so the on-screen page always matches the export.
+  useEffect(() => {
+    if (!editor) return;
+    const m = pageSettings.margins;
+    editor.commands.updatePageSize({
+      pageWidth: LETTER_PAGE.width,
+      pageHeight: LETTER_PAGE.height,
+      marginTop: inToPx(m.top),
+      marginBottom: inToPx(m.bottom),
+      marginLeft: inToPx(m.left),
+      marginRight: inToPx(m.right),
+    });
+  }, [editor, pageSettings]);
 
   // Recompute the floating Accept/Reject pill positions from the diff marks.
   useEffect(() => {
@@ -498,14 +554,23 @@ export default function Editor({
     };
   }, [editor, apiRef]);
 
+  const docStyle = {
+    "--doc-line-height": String(pageSettings.lineHeight),
+    "--doc-para-spacing": `${pageSettings.paragraphSpacing}pt`,
+  } as CSSProperties;
+
   return (
     <>
-      {editor && <EditorToolbar editor={editor} />}
-      <div
-        ref={containerRef}
-        className="relative mx-auto w-full max-w-3xl px-10 py-16"
-      >
-        <EditorContent editor={editor} />
+      {editor && (
+        <EditorToolbar
+          editor={editor}
+          pageSettings={pageSettings}
+          setPageSettings={setPageSettings}
+        />
+      )}
+      <div className="flex min-h-full justify-center px-6 py-10">
+        <div ref={containerRef} className="relative w-fit" style={docStyle}>
+          <EditorContent editor={editor} />
 
       {pills.map((pill) => (
         <div
@@ -557,6 +622,7 @@ export default function Editor({
           </button>
         </div>
       ))}
+        </div>
       </div>
     </>
   );

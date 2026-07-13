@@ -14,6 +14,12 @@
   --text-secondary: #8b8b93;
   --background: var(--app-bg);
   --foreground: var(--text-primary);
+
+  /* Document surface: white page + ink on a dark canvas (must match
+     DOC_CANVAS in lib/pageSettings.ts so pagination gaps blend in). */
+  --doc-canvas: #26272b;
+  --doc-paper: #ffffff;
+  --doc-ink: #1b1b1b;
 }
 
 @theme inline {
@@ -54,38 +60,47 @@ body {
 }
 
 .writhing-prose {
-  font-size: 1.0625rem;
-  line-height: 1.75;
-  color: var(--foreground);
+  font-size: 12pt;
+  line-height: var(--doc-line-height, 1.15);
+  color: var(--doc-ink);
+}
+
+/* The paginated editor renders as a white page (or stack of pages) on the
+   dark canvas. tiptap-pagination-plus adds `.rm-with-pagination` to the DOM. */
+.ProseMirror.rm-with-pagination {
+  background: var(--doc-paper);
+  margin: 0 auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  border-radius: 2px;
 }
 
 .writhing-prose h1 {
-  font-size: 2rem;
+  font-size: 22pt;
   font-weight: 700;
   line-height: 1.2;
   margin: 0.5rem 0 1rem;
 }
 
 .writhing-prose h2 {
-  font-size: 1.5rem;
+  font-size: 17pt;
   font-weight: 600;
   line-height: 1.3;
   margin: 1.5rem 0 0.75rem;
 }
 
 .writhing-prose h3 {
-  font-size: 1.25rem;
+  font-size: 14pt;
   font-weight: 600;
   margin: 1.25rem 0 0.5rem;
 }
 
 .writhing-prose p {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--doc-para-spacing, 8pt);
 }
 
 .writhing-prose ul,
 .writhing-prose ol {
-  margin: 0 0 1rem;
+  margin: 0 0 var(--doc-para-spacing, 8pt);
   padding-left: 1.5rem;
 }
 

@@ -1,6 +1,11 @@
 import type { Editor } from "@tiptap/core";
 import TurndownService from "turndown";
 import { asBlob } from "html-docx-js-typescript";
+import {
+  DEFAULT_PAGE_SETTINGS,
+  inToTwips,
+  type PageSettings,
+} from "@/lib/pageSettings";
 
 export type ExportFormat = "pdf" | "markdown" | "txt" | "docx";
 
@@ -51,9 +56,22 @@ function exportMarkdown(editor: Editor): void {
   downloadBlob(`${documentFilename(editor)}.md`, blob);
 }
 
-async function exportDocx(editor: Editor): Promise<void> {
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${editor.getHTML()}</body></html>`;
-  const result = await asBlob(html);
+async function exportDocx(
+  editor: Editor,
+  settings: PageSettings,
+): Promise<void> {
+  const { margins, lineHeight, paragraphSpacing } = settings;
+  const bodyStyle = `line-height:${lineHeight};`;
+  const paragraphStyle = `p{margin:0 0 ${paragraphSpacing}pt;line-height:${lineHeight};}`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${paragraphStyle}</style></head><body style="${bodyStyle}">${editor.getHTML()}</body></html>`;
+  const result = await asBlob(html, {
+    margins: {
+      top: inToTwips(margins.top),
+      right: inToTwips(margins.right),
+      bottom: inToTwips(margins.bottom),
+      left: inToTwips(margins.left),
+    },
+  });
   const blob =
     result instanceof Blob
       ? result
@@ -63,8 +81,11 @@ async function exportDocx(editor: Editor): Promise<void> {
   downloadBlob(`${documentFilename(editor)}.docx`, blob);
 }
 
-const PRINT_STYLES = `
-  @page { margin: 1in; }
+/** Print styles matching the on-screen page: margins, line and paragraph spacing. */
+function buildPrintStyles(settings: PageSettings): string {
+  const { margins, lineHeight, paragraphSpacing } = settings;
+  return `
+  @page { margin: ${margins.top}in ${margins.right}in ${margins.bottom}in ${margins.left}in; }
   * { box-sizing: border-box; }
   body {
     margin: 0;
@@ -72,13 +93,13 @@ const PRINT_STYLES = `
     background: #fff;
     font-family: ui-sans-serif, system-ui, -apple-system, Arial, sans-serif;
     font-size: 12pt;
-    line-height: 1.6;
+    line-height: ${lineHeight};
   }
   h1 { font-size: 22pt; font-weight: 700; line-height: 1.2; margin: 0.4em 0 0.5em; }
   h2 { font-size: 17pt; font-weight: 600; line-height: 1.3; margin: 0.8em 0 0.4em; }
   h3 { font-size: 14pt; font-weight: 600; margin: 0.7em 0 0.3em; }
-  p { margin: 0 0 0.75em; }
-  ul, ol { margin: 0 0 0.75em; padding-left: 1.5em; }
+  p { margin: 0 0 ${paragraphSpacing}pt; }
+  ul, ol { margin: 0 0 ${paragraphSpacing}pt; padding-left: 1.5em; }
   ul { list-style: disc; }
   ol { list-style: decimal; }
   li { margin: 0.15em 0; }
@@ -87,7 +108,7 @@ const PRINT_STYLES = `
     padding-left: 1em;
     color: #444;
     font-style: italic;
-    margin: 0 0 0.75em;
+    margin: 0 0 ${paragraphSpacing}pt;
   }
   code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -109,13 +130,14 @@ const PRINT_STYLES = `
   hr { border: none; border-top: 1px solid #d4d4d8; margin: 1.5em 0; }
   img { max-width: 100%; }
 `;
+}
 
 /**
  * Print the document to PDF by rendering it into an isolated hidden iframe and
  * invoking that iframe's print dialog. This avoids the app's fixed-height,
  * overflow-scrolling layout clipping the printout to a single page.
  */
-function exportPdf(editor: Editor): void {
+function exportPdf(editor: Editor, settings: PageSettings): void {
   const iframe = document.createElement("iframe");
   iframe.setAttribute("aria-hidden", "true");
   iframe.style.position = "fixed";
@@ -152,7 +174,7 @@ function exportPdf(editor: Editor): void {
   }
   doc.open();
   doc.write(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>${PRINT_STYLES}</style></head><body>${editor.getHTML()}</body></html>`,
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>${buildPrintStyles(settings)}</style></head><body>${editor.getHTML()}</body></html>`,
   );
   doc.close();
 }
@@ -160,10 +182,11 @@ function exportPdf(editor: Editor): void {
 export async function exportDocument(
   editor: Editor,
   format: ExportFormat,
+  settings: PageSettings = DEFAULT_PAGE_SETTINGS,
 ): Promise<void> {
   switch (format) {
     case "pdf":
-      exportPdf(editor);
+      exportPdf(editor, settings);
       return;
     case "markdown":
       exportMarkdown(editor);
@@ -172,7 +195,7 @@ export async function exportDocument(
       exportText(editor);
       return;
     case "docx":
-      await exportDocx(editor);
+      await exportDocx(editor, settings);
       return;
   }
 }
