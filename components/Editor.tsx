@@ -63,6 +63,7 @@ export interface EditorApi {
 
 export interface DiffHandlers {
   accept: (id: string) => void;
+  refine: (id: string) => void;
   reject: (id: string) => void;
 }
 
@@ -597,6 +598,27 @@ export default function Editor({
               strokeLinejoin="round"
             >
               <path d="M4 10l4 4 8-8" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Refine edit"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              diffHandlersRef.current.refine(pill.id);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-full text-blue-500 transition-colors hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/40"
+          >
+            <svg
+              viewBox="0 0 20 20"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 16l3.5-.8L15 7.7 12.3 5 4.8 12.5 4 16zM11.8 5.5l2.7 2.7" />
             </svg>
           </button>
           <button

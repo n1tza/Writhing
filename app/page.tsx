@@ -15,6 +15,7 @@ export default function Home() {
   const editorApiRef = useRef<EditorApi | null>(null);
   const diffHandlersRef = useRef<DiffHandlers>({
     accept: () => {},
+    refine: () => {},
     reject: () => {},
   });
 

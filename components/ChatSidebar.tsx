@@ -19,6 +19,7 @@ const TOOL_TO_KIND: Record<string, EditKind> = {
 
 // Prefix on a tool result that signals the model should take another turn.
 const RETRY_MARKER = "EDIT_FAILED:";
+const REVISION_MARKER = "REVISION_REQUESTED:";
 // Prefix on internal messages we inject to drive the task loop. These are sent
 // to the model but hidden from the chat transcript in the UI.
 const CONTROL_PREFIX = "::WRITHING_TASK:: ";
@@ -71,6 +72,13 @@ export default function ChatSidebar({
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ChatMode>("agent");
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [refiningToolCallId, setRefiningToolCallId] = useState<string | null>(
+    null,
+  );
+  const pendingRefinementRef = useRef<{
+    toolCallId: string;
+    feedback: string;
+  } | null>(null);
   const modeRef = useRef<ChatMode>("agent");
   const proposedRef = useRef<Set<string>>(new Set());
   const resolvedRef = useRef<Set<string>>(new Set());
@@ -149,6 +157,9 @@ export default function ChatSidebar({
     const kind = kindOf(toolCallId);
     if (!kind) return;
     resolvedRef.current.add(toolCallId);
+    setRefiningToolCallId((current) =>
+      current === toolCallId ? null : current,
+    );
     editorApiRef.current?.acceptDiff(toolCallId);
     addToolOutput({
       tool: kind,
@@ -163,6 +174,9 @@ export default function ChatSidebar({
     const kind = kindOf(toolCallId);
     if (!kind) return;
     resolvedRef.current.add(toolCallId);
+    setRefiningToolCallId((current) =>
+      current === toolCallId ? null : current,
+    );
     editorApiRef.current?.rejectDiff(toolCallId);
     addToolOutput({
       tool: kind,
@@ -172,13 +186,64 @@ export default function ChatSidebar({
     });
   }
 
-  // Keep the in-document Accept/Reject buttons wired to the latest handlers.
+  function startRefinement(toolCallId: string) {
+    if (resolvedRef.current.has(toolCallId)) return;
+    setRefiningToolCallId(toolCallId);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`edit-diff-${toolCallId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  }
+
+  async function handleRefine(toolCallId: string, feedback: string) {
+    if (resolvedRef.current.has(toolCallId)) return;
+    const kind = kindOf(toolCallId);
+    if (!kind) return;
+
+    resolvedRef.current.add(toolCallId);
+    editorApiRef.current?.rejectDiff(toolCallId);
+    setRefiningToolCallId(null);
+    pendingRefinementRef.current = { toolCallId, feedback };
+    await addToolOutput({
+      tool: kind,
+      toolCallId,
+      output: `${REVISION_MARKER} The user did not accept this suggestion and asked for a revised version. The original suggestion was discarded and the document is unchanged. Feedback: "${feedback}"`,
+    });
+  }
+
+  // Keep the in-document Accept/Refine/Reject buttons wired to the latest
+  // handlers in the assistant sidebar.
   useEffect(() => {
     diffHandlersRef.current = {
       accept: handleAccept,
+      refine: startRefinement,
       reject: handleReject,
     };
   });
+
+  // Tool-call turns can contain multiple suggested edits. Wait until every
+  // suggestion in the turn has been resolved before asking for a replacement,
+  // so the model receives a valid tool-call/tool-result sequence.
+  useEffect(() => {
+    const pendingRefinement = pendingRefinementRef.current;
+    if (!pendingRefinement || busy) return;
+    const hasUnresolvedToolCall = messages.some((message) =>
+      (message.parts as ToolPart[]).some(
+        (part) =>
+          TOOL_TO_KIND[part.type] &&
+          (part.state === "input-available" ||
+            part.state === "input-streaming"),
+      ),
+    );
+    if (hasUnresolvedToolCall) return;
+
+    const { feedback } = pendingRefinement;
+    pendingRefinementRef.current = null;
+    void sendMessage({
+      text: `Please refine the previous suggestion using this feedback: "${feedback}". The original suggestion was discarded and was NOT applied, so use the CURRENT DOCUMENT as the source of truth. Produce one replacement suggestion for the same passage and stop for review.`,
+    });
+  }, [busy, messages, sendMessage]);
 
   // Show each new tool call as an inline diff in the document; turn planTasks
   // calls into a task list and kick off the first task.
@@ -253,6 +318,17 @@ export default function ChatSidebar({
       (p) => p.state === "output-available" || p.state === "output-error",
     );
     if (!allResolved) return;
+    // A refined suggestion is still the current task. Wait for the replacement
+    // tool call instead of advancing to the next planned task.
+    if (
+      editParts.some(
+        (part) =>
+          typeof part.output === "string" &&
+          part.output.startsWith(REVISION_MARKER),
+      )
+    ) {
+      return;
+    }
     // Key on the message + step so we advance exactly once per completed step,
     // even though every task shares the same accumulating assistant message.
     const advanceKey = `${lastAssistant.id}#${startIndex}`;
@@ -287,6 +363,8 @@ export default function ChatSidebar({
   // Start a brand-new request from the user: clear any prior task state.
   function submitUserMessage(text: string) {
     setTasks([]);
+    setRefiningToolCallId(null);
+    pendingRefinementRef.current = null;
     planHandledRef.current = new Set();
     advancedFromRef.current = new Set();
     sendMessage({ text });
@@ -369,10 +447,13 @@ export default function ChatSidebar({
                 const toolPart = part as ToolPart;
                 const displayOutput = toolPart.output?.startsWith(RETRY_MARKER)
                   ? "Couldn't find that text — trying again…"
+                  : toolPart.output?.startsWith(REVISION_MARKER)
+                    ? "Original suggestion discarded. A refined replacement was requested."
                   : toolPart.output;
                 return (
                   <EditDiff
                     key={toolPart.toolCallId}
+                    id={toolPart.toolCallId}
                     kind={kind}
                     input={toolPart.input}
                     state={toolPart.state}
@@ -380,6 +461,14 @@ export default function ChatSidebar({
                     errorText={toolPart.errorText}
                     onAccept={() => handleAccept(toolPart.toolCallId)}
                     onReject={() => handleReject(toolPart.toolCallId)}
+                    refining={refiningToolCallId === toolPart.toolCallId}
+                    onStartRefine={() =>
+                      startRefinement(toolPart.toolCallId)
+                    }
+                    onCancelRefine={() => setRefiningToolCallId(null)}
+                    onRefine={(feedback) =>
+                      handleRefine(toolPart.toolCallId, feedback)
+                    }
                   />
                 );
               }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type {
   EditDocumentInput,
   InsertTextInput,
@@ -15,6 +16,7 @@ type EditState =
   | "output-error";
 
 interface EditDiffProps {
+  id: string;
   kind: EditKind;
   input: unknown;
   state: EditState;
@@ -22,6 +24,10 @@ interface EditDiffProps {
   errorText?: string;
   onAccept: () => void;
   onReject: () => void;
+  refining: boolean;
+  onStartRefine: () => void;
+  onCancelRefine: () => void;
+  onRefine: (feedback: string) => Promise<void>;
 }
 
 function Label({ kind }: { kind: EditKind }) {
@@ -39,6 +45,7 @@ function Label({ kind }: { kind: EditKind }) {
 }
 
 export default function EditDiff({
+  id,
   kind,
   input,
   state,
@@ -46,14 +53,35 @@ export default function EditDiff({
   errorText,
   onAccept,
   onReject,
+  refining,
+  onStartRefine,
+  onCancelRefine,
+  onRefine,
 }: EditDiffProps) {
+  const [feedback, setFeedback] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const reason =
     input && typeof input === "object" && "reason" in input
       ? String((input as { reason?: unknown }).reason ?? "")
       : "";
 
+  const submitRefinement = async () => {
+    const instruction = feedback.trim();
+    if (!instruction || submitting) return;
+    setSubmitting(true);
+    try {
+      await onRefine(instruction);
+      setFeedback("");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
-    <div className="my-2 rounded-xl border border-[var(--border-subtle)] bg-white/[0.03] p-3 text-sm">
+    <div
+      id={`edit-diff-${id}`}
+      className="my-2 rounded-xl border border-[var(--border-subtle)] bg-white/[0.03] p-3 text-sm"
+    >
       <div className="mb-2 flex items-center justify-between gap-2">
         <Label kind={kind} />
         {state === "input-streaming" && (
@@ -86,7 +114,7 @@ export default function EditDiff({
         </div>
       )}
 
-      {state === "input-available" && (
+      {state === "input-available" && !refining && (
         <div className="mt-3 flex gap-2">
           <button
             onClick={onAccept}
@@ -95,11 +123,66 @@ export default function EditDiff({
             Accept
           </button>
           <button
+            onClick={onStartRefine}
+            className="rounded-lg border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-300 transition-colors hover:bg-blue-500/20 hover:text-blue-200"
+          >
+            Refine
+          </button>
+          <button
             onClick={onReject}
             className="rounded-lg border border-white/10 px-3 py-1 text-xs font-medium text-zinc-300 transition-colors hover:bg-white/5"
           >
             Reject
           </button>
+        </div>
+      )}
+
+      {state === "input-available" && refining && (
+        <div className="mt-3 rounded-lg border border-blue-400/15 bg-blue-500/[0.06] p-2">
+          <label className="text-xs font-medium text-blue-200">
+            How should Writhing adjust this suggestion?
+            <textarea
+              autoFocus
+              rows={3}
+              value={feedback}
+              onChange={(event) => setFeedback(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  (event.metaKey || event.ctrlKey)
+                ) {
+                  event.preventDefault();
+                  void submitRefinement();
+                }
+              }}
+              placeholder="For example: make it more concise, keep the original tone, or use a stronger ending…"
+              className="mt-2 w-full resize-none rounded-md border border-white/10 bg-black/15 px-2.5 py-2 text-xs leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-blue-400/35"
+            />
+          </label>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={!feedback.trim() || submitting}
+              onClick={() => void submitRefinement()}
+              className="rounded-lg bg-blue-500/90 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {submitting ? "Refining…" : "Generate replacement"}
+            </button>
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => {
+                setFeedback("");
+                onCancelRefine();
+              }}
+              className="rounded-lg px-3 py-1 text-xs font-medium text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-200"
+            >
+              Cancel
+            </button>
+            <span className="ml-auto text-[10px] text-zinc-600">
+              ⌘/Ctrl + Enter
+            </span>
+          </div>
         </div>
       )}
 
