@@ -9,7 +9,7 @@ export const TWIPS_PER_IN = 1440;
  * The canvas color behind the white page(s). Kept in sync with `--doc-canvas`
  * in globals.css so the pagination gaps blend into the surrounding canvas.
  */
-export const DOC_CANVAS = "#26272b";
+export const DOC_CANVAS = "#08080a";
 
 /** US Letter at 96dpi: 8.5in x 11in. */
 export const LETTER_PAGE = {

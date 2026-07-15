@@ -66,8 +66,8 @@ export default function Home() {
         <div id="editor-toolbar-slot" />
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-1.5 p-2">
-        <main className="ui-panel-enter min-h-0 flex-1 overflow-auto rounded-2xl border border-[var(--border-subtle)] bg-[var(--doc-canvas)]">
+      <div className="flex min-h-0 flex-1">
+        <main className="ui-panel-enter min-h-0 flex-1 overflow-auto bg-[var(--doc-canvas)]">
           <Editor apiRef={editorApiRef} diffHandlersRef={diffHandlersRef} />
         </main>
 
@@ -80,7 +80,7 @@ export default function Home() {
           }}
           onDoubleClick={() => setSidebarWidth(DEFAULT_WIDTH)}
           title="Drag to resize (double-click to reset)"
-          className="group relative flex w-1.5 shrink-0 cursor-col-resize items-center justify-center"
+          className="group relative mx-1 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center"
         >
           <div
             className={`h-10 w-1 rounded-full transition-colors ${
@@ -93,7 +93,7 @@ export default function Home() {
 
         <aside
           style={{ width: sidebarWidth }}
-          className="ui-panel-enter shrink-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]"
+          className="ui-panel-enter my-2 mr-2 shrink-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]"
         >
           <ChatSidebar
             editorApiRef={editorApiRef}

@@ -17,7 +17,7 @@
 
   /* Document surface: white page + ink on a dark canvas (must match
      DOC_CANVAS in lib/pageSettings.ts so pagination gaps blend in). */
-  --doc-canvas: #26272b;
+  --doc-canvas: #08080a;
   --doc-paper: #ffffff;
   --doc-ink: #1b1b1b;
 }
@@ -172,7 +172,7 @@ a,
 .ProseMirror.rm-with-pagination {
   background: var(--doc-paper);
   margin: 0 auto;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.22);
   border-radius: 2px;
 }
 

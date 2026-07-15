@@ -26,7 +26,9 @@ import {
 } from "@tiptap/pm/model";
 import { marked } from "marked";
 import { DiffDeleteMark, DiffInsertMark } from "@/lib/diffExtensions";
+import { IndentExtension } from "@/lib/indentExtension";
 import EditorToolbar from "@/components/EditorToolbar";
+import Ruler from "@/components/Ruler";
 import {
   createDebouncedSaver,
   loadDocument,
@@ -163,6 +165,7 @@ export default function Editor({
       FontSize,
       Highlight.configure({ multicolor: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
+      IndentExtension,
       PaginationPlus.configure({
         pageWidth: LETTER_PAGE.width,
         pageHeight: LETTER_PAGE.height,
@@ -566,6 +569,13 @@ export default function Editor({
         <EditorToolbar
           editor={editor}
           pageSettings={pageSettings}
+          setPageSettings={setPageSettings}
+        />
+      )}
+      {editor && (
+        <Ruler
+          editor={editor}
+          margins={pageSettings.margins}
           setPageSettings={setPageSettings}
         />
       )}
