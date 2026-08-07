@@ -43,3 +43,9 @@ next-env.d.ts
 # Supabase CLI local scratch state
 supabase/.temp/
 supabase/.branches/
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/

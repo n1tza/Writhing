@@ -1,0 +1,7 @@
+docling
+openai
+supabase
+python-dotenv
+tiktoken
+pysbd
+pytest
