@@ -6,12 +6,17 @@ import Editor, {
   type EditorApi,
 } from "@/components/Editor";
 import ChatSidebar from "@/components/ChatSidebar";
+import SourceSidebar from "@/components/SourceSidebar";
+import { useDocumentId } from "@/lib/editor/use-document-id";
 
 const SIDEBAR_WIDTH_KEY = "writhing:sidebarWidth";
+const SOURCE_SIDEBAR_WIDTH_KEY = "writhing:sourceSidebarWidth";
 const MIN_WIDTH = 300;
 const DEFAULT_WIDTH = 380;
+const DEFAULT_SOURCE_WIDTH = 320;
 
 export default function Home() {
+  const documentId = useDocumentId();
   const editorApiRef = useRef<EditorApi | null>(null);
   const diffHandlersRef = useRef<DiffHandlers>({
     accept: () => {},
@@ -21,6 +26,10 @@ export default function Home() {
 
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
   const [dragging, setDragging] = useState(false);
+  const [sourceSidebarWidth, setSourceSidebarWidth] = useState(
+    DEFAULT_SOURCE_WIDTH,
+  );
+  const [draggingSource, setDraggingSource] = useState(false);
 
   const clampWidth = (width: number) => {
     const max = Math.max(MIN_WIDTH, window.innerWidth - 360);
@@ -32,6 +41,11 @@ export default function Home() {
     if (stored) {
       const parsed = Number(stored);
       if (!Number.isNaN(parsed)) setSidebarWidth(clampWidth(parsed));
+    }
+    const storedSource = window.localStorage.getItem(SOURCE_SIDEBAR_WIDTH_KEY);
+    if (storedSource) {
+      const parsed = Number(storedSource);
+      if (!Number.isNaN(parsed)) setSourceSidebarWidth(clampWidth(parsed));
     }
   }, []);
 
@@ -57,8 +71,36 @@ export default function Home() {
   }, [dragging]);
 
   useEffect(() => {
+    if (!draggingSource) return;
+
+    const onMove = (e: MouseEvent) => {
+      setSourceSidebarWidth(clampWidth(e.clientX));
+    };
+    const onUp = () => setDraggingSource(false);
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [draggingSource]);
+
+  useEffect(() => {
     window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SOURCE_SIDEBAR_WIDTH_KEY,
+      String(sourceSidebarWidth),
+    );
+  }, [sourceSidebarWidth]);
 
   return (
     <div className="flex h-screen w-full flex-col bg-[var(--app-bg)] text-[var(--text-primary)]">
@@ -67,8 +109,39 @@ export default function Home() {
       </header>
 
       <div className="flex min-h-0 flex-1">
+        <aside
+          style={{ width: sourceSidebarWidth }}
+          className="ui-panel-enter my-2 ml-2 shrink-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]"
+        >
+          <SourceSidebar />
+        </aside>
+
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setDraggingSource(true);
+          }}
+          onDoubleClick={() => setSourceSidebarWidth(DEFAULT_SOURCE_WIDTH)}
+          title="Drag to resize (double-click to reset)"
+          className="group relative mx-1 flex w-1.5 shrink-0 cursor-col-resize items-center justify-center"
+        >
+          <div
+            className={`h-10 w-1 rounded-full transition-colors ${
+              draggingSource
+                ? "bg-blue-500"
+                : "bg-white/10 group-hover:bg-white/25"
+            }`}
+          />
+        </div>
+
         <main className="ui-panel-enter min-h-0 flex-1 overflow-auto bg-[var(--doc-canvas)]">
-          <Editor apiRef={editorApiRef} diffHandlersRef={diffHandlersRef} />
+          <Editor
+            apiRef={editorApiRef}
+            diffHandlersRef={diffHandlersRef}
+            documentId={documentId}
+          />
         </main>
 
         <div

@@ -27,6 +27,8 @@ import {
 import { marked } from "marked";
 import { DiffDeleteMark, DiffInsertMark } from "@/lib/diffExtensions";
 import { IndentExtension } from "@/lib/indentExtension";
+import { BlockId } from "@/lib/editor/extensions/block-id";
+import { saveDocument as saveDocumentToSupabase } from "@/lib/editor/autosave";
 import EditorToolbar from "@/components/EditorToolbar";
 import Ruler from "@/components/Ruler";
 import {
@@ -139,9 +141,12 @@ function formattingAttrs(
 export default function Editor({
   apiRef,
   diffHandlersRef,
+  documentId,
 }: {
   apiRef: MutableRefObject<EditorApi | null>;
   diffHandlersRef: MutableRefObject<DiffHandlers>;
+  /** When set, the document and its blocks are persisted to Supabase. */
+  documentId?: string;
 }) {
   const debouncedSave = useRef(createDebouncedSaver(500));
   const pendingRewrites = useRef(
@@ -158,6 +163,9 @@ export default function Editor({
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
+      // Must come before the extensions that define the block node types, so
+      // its global blockId attribute is registered on them.
+      BlockId,
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       TextStyle,
       Color,
@@ -196,6 +204,38 @@ export default function Editor({
       }
     },
   });
+
+  // Debounced Supabase autosave: a full-document version snapshot plus one
+  // upsert per block, keyed by the stable blockId.
+  useEffect(() => {
+    if (!editor || !documentId) return;
+
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    const onUpdate = () => {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        // Don't persist a document that is showing an unresolved AI diff — the
+        // deleted/inserted text is still both present in the doc.
+        if (gatherDiffEnds(editor.state.doc).size > 0) return;
+        saveDocumentToSupabase(editor, documentId).catch(console.error);
+      }, 1500);
+    };
+
+    editor.on("update", onUpdate);
+    return () => {
+      if (timeout) clearTimeout(timeout);
+      editor.off("update", onUpdate);
+    };
+  }, [editor, documentId]);
+
+  // Expose the editor for the block-id verification snippet in the console.
+  useEffect(() => {
+    if (!editor || process.env.NODE_ENV === "production") return;
+    (window as unknown as { __editor?: unknown }).__editor = editor;
+    return () => {
+      delete (window as unknown as { __editor?: unknown }).__editor;
+    };
+  }, [editor]);
 
   // Load persisted page settings on the client (kept out of the initial render
   // so server and first client render agree on the default layout).
