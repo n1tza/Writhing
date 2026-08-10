@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Scratch state written by the Supabase CLI on `supabase start`.
     "supabase/.temp/**",
+    // Python virtualenvs; torch and mpire ship bundled .js assets.
+    "**/venv/**",
   ]),
 ]);
 

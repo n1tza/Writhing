@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { ensureUser } from "@/lib/supabase/session";
 
 const DOCUMENT_ID_KEY = "writhing:documentId";
 
@@ -15,24 +16,7 @@ const DOCUMENT_ID_KEY = "writhing:documentId";
  */
 async function ensureDocument(): Promise<string> {
   const supabase = createClient();
-
-  // getUser validates against the server, unlike getSession, which only decodes
-  // whatever is in cookie storage. A stored session can outlive the user it
-  // names — revoked, expired, or wiped by a local `supabase db reset` — and
-  // trusting it would leave the app permanently unable to persist.
-  let {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    // Drop the stale token first; signing in on top of one is not reliable.
-    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) throw error;
-    user = data.user;
-  }
-
-  if (!user) throw new Error("No Supabase user after sign-in");
+  const user = await ensureUser();
 
   const stored = window.localStorage.getItem(DOCUMENT_ID_KEY);
   if (stored) {
