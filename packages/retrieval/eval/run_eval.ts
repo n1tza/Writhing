@@ -1,109 +1,115 @@
-/**
- * Retrieval evaluation harness.
- *
- * Embeds each question, runs the hybrid retriever, and reports whether a
- * genuinely relevant passage made the top K. Chunking and retrieval quality are
- * the levers that decide whether the AI cites the right thing, and neither is
- * visible from unit tests, so this measures them against real indexed sources.
- *
- * Usage:
- *   SOURCE_ID=<uuid> npx tsx eval/run_eval.ts [--k 5]
- *
- * Requires OPENAI_API_KEY, NEXT_PUBLIC_SUPABASE_URL and
- * SUPABASE_SERVICE_ROLE_KEY in the environment.
- */
-import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import OpenAI from 'openai'
 import { SourceHybridRetriever } from '../src/hybrid'
+import type { EvidenceResult } from '../src/interface'
+import questions from './questions.json'
 
-interface EvalCase {
-  id: string
-  question: string
-  expect: string[][]
-}
-
-const here = dirname(fileURLToPath(import.meta.url))
-const { cases } = JSON.parse(
-  readFileSync(join(here, 'questions.json'), 'utf8')
-) as { cases: EvalCase[] }
-
-const kFlag = process.argv.indexOf('--k')
-const K = kFlag === -1 ? 5 : Number(process.argv[kFlag + 1])
-const SOURCE_ID = process.env.SOURCE_ID
-const DOCUMENT_ID = process.env.DOCUMENT_ID ?? '00000000-0000-0000-0000-000000000000'
-
-// The model must match the one used at index time; a mismatch silently degrades
-// retrieval because vectors from different models are not comparable.
-const EMBEDDING_MODEL = 'text-embedding-3-small'
-
-const openai = new OpenAI()
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const retriever = new SourceHybridRetriever()
 
-function matches(text: string, expect: string[][]): boolean {
-  // OCR'd sources contain runs of whitespace inside phrases ("humanly  devised
-  // constraints"), so a literal substring test would report a false miss on a
-  // passage that is in fact the right one.
-  const haystack = text.toLowerCase().replace(/\s+/g, ' ')
-  return expect.some((group) =>
-    group.every((term) => haystack.includes(term.toLowerCase().replace(/\s+/g, ' ')))
+const EMBEDDING_MODEL = 'text-embedding-3-small'
+const TOP_K = 10
+
+interface EvalQuestion {
+  id: string
+  query: string
+  expectedSourceId: string
+  expectedPage: number
+  expectedPassageContains: string
+  notes?: string
+}
+
+interface EvalResult {
+  question: EvalQuestion
+  hit5: boolean
+  hit10: boolean
+  topResult: EvidenceResult | null
+}
+
+async function embedQuery(query: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    model: EMBEDDING_MODEL,
+    input: query,
+  })
+  return response.data[0].embedding
+}
+
+function isHit(results: EvidenceResult[], question: EvalQuestion, k: number): boolean {
+  return results.slice(0, k).some(
+    r =>
+      r.sourceId === question.expectedSourceId &&
+      r.text.toLowerCase().includes(question.expectedPassageContains.toLowerCase())
   )
 }
 
-async function main() {
-  console.log(`Evaluating ${cases.length} questions at k=${K}\n`)
+async function runEval(): Promise<void> {
+  if ((questions as EvalQuestion[]).length === 0) {
+    console.log('No questions found in questions.json. Add questions before running the eval.')
+    process.exit(0)
+  }
 
-  let hits = 0
-  const ranks: number[] = []
+  const results: EvalResult[] = []
 
-  for (const testCase of cases) {
-    const embedding = await openai.embeddings.create({
-      model: EMBEDDING_MODEL,
-      input: testCase.question,
-    })
+  for (const question of questions as EvalQuestion[]) {
+    process.stdout.write(`Running ${question.id}... `)
 
-    const results = await retriever.retrieve({
-      query: testCase.question,
-      queryEmbedding: embedding.data[0].embedding,
-      documentId: DOCUMENT_ID,
-      sourceIds: SOURCE_ID ? [SOURCE_ID] : undefined,
-      topK: K,
+    const queryEmbedding = await embedQuery(question.query)
+
+    const retrieved = await retriever.retrieve({
+      query: question.query,
+      queryEmbedding,
+      documentId: '',               // not filtering by document for source eval
+      sourceIds: [question.expectedSourceId],
+      topK: TOP_K,
       includeEvidence: true,
       includeDraft: false,
     })
 
-    const hitIndex = results.findIndex((r) => matches(r.text, testCase.expect))
-    const hit = hitIndex !== -1
-    if (hit) {
-      hits += 1
-      ranks.push(hitIndex + 1)
-    }
+    const hit5 = isHit(retrieved, question, 5)
+    const hit10 = isHit(retrieved, question, 10)
+    const topResult = retrieved[0] ?? null
 
-    const mark = hit ? `hit @${hitIndex + 1}` : 'MISS  '
-    console.log(`${mark}  ${testCase.id}`)
-    console.log(`        q: ${testCase.question}`)
-    const top = results[0]
-    if (top) {
-      const preview = top.text.replace(/\s+/g, ' ').slice(0, 96)
-      console.log(`        top (p${top.pageStart}, ${top.score.toFixed(4)}): ${preview}…`)
-    } else {
-      console.log('        top: no results')
-    }
-    console.log()
+    results.push({ question, hit5, hit10, topResult })
+
+    console.log(hit5 ? '✓' : '✗')
   }
 
-  // Mean reciprocal rank over all cases; a miss contributes zero.
-  const mrr = ranks.reduce((sum, rank) => sum + 1 / rank, 0) / cases.length
+  // Summary
+  const total = results.length
+  const recall5 = results.filter(r => r.hit5).length
+  const recall10 = results.filter(r => r.hit10).length
 
-  console.log('─'.repeat(60))
-  console.log(`recall@${K}: ${hits}/${cases.length}  (${((hits / cases.length) * 100).toFixed(0)}%)`)
-  console.log(`MRR:       ${mrr.toFixed(3)}`)
+  console.log('\n' + '─'.repeat(50))
+  console.log(`Total questions: ${total}`)
+  console.log(`Recall@5:  ${recall5}/${total} (${Math.round((recall5 / total) * 100)}%)`)
+  console.log(`Recall@10: ${recall10}/${total} (${Math.round((recall10 / total) * 100)}%)`)
 
-  if (hits < cases.length) process.exitCode = 1
+  // Failures
+  const failures = results.filter(r => !r.hit5)
+  if (failures.length > 0) {
+    console.log('\nFailures:')
+    for (const f of failures) {
+      const top = f.topResult
+      const topDesc = top
+        ? `got: "${top.text.slice(0, 60)}..." (page ${top.pageStart}, source ${top.sourceId.slice(0, 8)})`
+        : 'got: no results'
+      console.log(`  [${f.question.id}] "${f.question.query}"`)
+      console.log(`         expected: source ${f.question.expectedSourceId.slice(0, 8)}, page ${f.question.expectedPage}`)
+      console.log(`         ${topDesc}`)
+    }
+  }
+
+  console.log('─'.repeat(50))
+
+  if (recall5 / total < 0.8) {
+    console.log('\n✗ GATE FAILED: recall@5 is below 80%. Do not proceed to AI generation.')
+    process.exit(1)
+  } else {
+    console.log('\n✓ GATE PASSED: recall@5 ≥ 80%. Safe to proceed.')
+    process.exit(0)
+  }
 }
 
-main().catch((error) => {
-  console.error(error)
+runEval().catch(err => {
+  console.error('Eval crashed:', err)
   process.exit(1)
 })

@@ -1,30 +1,242 @@
-{
-  "note": "Retrieval evaluation set. Each case is a question a user might ask of a source, plus terms that must appear in a genuinely relevant passage. `expect` is scored case-insensitively against the retrieved text; a case passes if a passage containing every term in any one of the `expect` groups appears within the top `k` results. Questions are deliberately phrased in the user's words rather than the document's, so the vector leg has to do real work.",
-  "cases": [
-    {
-      "id": "north-definition",
-      "question": "What are institutions?",
-      "expect": [["humanly devised constraints"]]
-    },
-    {
-      "id": "north-transaction-costs",
-      "question": "Why is it costly to make and enforce agreements between people?",
-      "expect": [["transaction cost"], ["enforce", "exchange"]]
-    },
-    {
-      "id": "north-europe",
-      "question": "How did economic institutions develop in early modern Europe?",
-      "expect": [["europe"]]
-    },
-    {
-      "id": "north-why-not-adapt",
-      "question": "Why do some societies fail to adopt institutions that would make them richer?",
-      "expect": [["belief"], ["institutions do not evolve"], ["persist"]]
-    },
-    {
-      "id": "north-trade-gains",
-      "question": "What role do institutions play in capturing the gains from trade?",
-      "expect": [["gains from trade"], ["exchange"]]
-    }
-  ]
-}
+[
+  {
+    "id": "q001",
+    "query": "How does North define what an institution actually is?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 1,
+    "expectedPassageContains": "humanly  devised  constraints",
+    "notes": "Definitional lookup. Query paraphrases rather than quotes, so the vector leg has to carry it."
+  },
+  {
+    "id": "q002",
+    "query": "Why is it expensive to agree a deal and make sure the other side keeps to it?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 2,
+    "expectedPassageContains": "takes  resources",
+    "notes": "Conceptual question in plain words; the passage never uses the word 'expensive'."
+  },
+  {
+    "id": "q003",
+    "query": "Why do bigger economies need something beyond reputation and personal ties to make trade work?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 4,
+    "expectedPassageContains": "impersonal  contract  enforcement",
+    "notes": "The target passage opens with a dangling 'Such societies', so it is also the small-to-big case."
+  },
+  {
+    "id": "q004",
+    "query": "What share of the US economy is taken up by the costs of transacting?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 5,
+    "expectedPassageContains": "transaction  sector",
+    "notes": "Quantitative claim. Tests retrieval of a specific figure rather than an argument."
+  },
+  {
+    "id": "q005",
+    "query": "What makes bargaining in a North African bazaar so costly for buyers?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 7,
+    "expectedPassageContains": "clientization",
+    "notes": "Query says 'bazaar'; the source only ever says 'Suq'. Vocabulary mismatch, vector leg only."
+  },
+  {
+    "id": "q006",
+    "query": "zettata",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 8,
+    "expectedPassageContains": "zettata",
+    "notes": "Single exact term lifted from the source. This is the case the FTS leg is supposed to own."
+  },
+  {
+    "id": "q007",
+    "query": "How did medieval merchants get around the religious ban on charging interest?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 9,
+    "expectedPassageContains": "usury",
+    "notes": "Query says 'ban on charging interest'; the source says 'usury laws'."
+  },
+  {
+    "id": "q008",
+    "query": "How did traders move money between distant cities without shipping coin?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 9,
+    "expectedPassageContains": "bill  of  exchange",
+    "notes": "Mechanism question phrased by what it achieves rather than what it is called."
+  },
+  {
+    "id": "q009",
+    "query": "How did shippers protect themselves against losing cargo at sea?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 10,
+    "expectedPassageContains": "marine  insurance",
+    "notes": "Tests retrieval of the uncertainty-into-risk argument."
+  },
+  {
+    "id": "q010",
+    "query": "Why do economies keep following the same trajectory even when it leaves them poor?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 13,
+    "expectedPassageContains": "Path  dependence",
+    "notes": "Core theoretical concept, asked without naming it."
+  },
+  {
+    "id": "q011",
+    "query": "Where were the new financial institutions of early modern Europe finally combined?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 12,
+    "expectedPassageContains": "Amsterdam",
+    "notes": "Tests a place-specific answer sitting right on a section boundary."
+  },
+  {
+    "id": "q012",
+    "query": "Why did Spanish colonies in the Americas end up with different institutions from the English ones?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 14,
+    "expectedPassageContains": "Spanish  Indies",
+    "notes": "Comparative question whose answer is spread across several chunks."
+  },
+  {
+    "id": "q013",
+    "query": "How do tribal societies keep order and settle disputes without a state?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 6,
+    "expectedPassageContains": "Colson",
+    "notes": "Tests retrieval of cited anthropological evidence from a conceptual query."
+  },
+  {
+    "id": "q014",
+    "query": "What stops a capital market from developing when rulers can seize assets?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 5,
+    "expectedPassageContains": "capital  market",
+    "notes": "Property-rights argument; the query supplies causal framing the passage only implies."
+  },
+  {
+    "id": "q015",
+    "query": "What is the agency problem in long distance trade?",
+    "expectedSourceId": "c0437420-08ba-4c8f-a489-651701a9df56",
+    "expectedPage": 4,
+    "expectedPassageContains": "agency  problem",
+    "notes": "Uses the source's own terminology, so both legs should find it."
+  },
+  {
+    "id": "q016",
+    "query": "What was Yeltsin's daily routine as president?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 1,
+    "expectedPassageContains": "five A.M.",
+    "notes": "Routine/biographical detail. Tests retrieval of a concrete fact from an opening passage."
+  },
+  {
+    "id": "q017",
+    "query": "What did the different coloured folders on Yeltsin's desk contain?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 1,
+    "expectedPassageContains": "green folders",
+    "notes": "Concrete mechanism described across adjacent chunks."
+  },
+  {
+    "id": "q018",
+    "query": "Which historical Russian ruler did Yeltsin openly admire?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 3,
+    "expectedPassageContains": "Peter the Great",
+    "notes": "Named-entity answer from a conceptual query about monarchism."
+  },
+  {
+    "id": "q019",
+    "query": "How did Yeltsin's Communist Party career shape the way he handled appointments?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 4,
+    "expectedPassageContains": "first secretary",
+    "notes": "Query names neither 'CPSU' nor 'cadres'; the passage uses both."
+  },
+  {
+    "id": "q020",
+    "query": "Who was the official nicknamed Pal Palych who ran Kremlin property?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 5,
+    "expectedPassageContains": "Pal Palych",
+    "notes": "Exact nickname from the source. Should be an FTS-leg win."
+  },
+  {
+    "id": "q021",
+    "query": "How did Yeltsin keep officials on edge during large meetings?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 7,
+    "expectedPassageContains": "assigning seats",
+    "notes": "Behavioural detail; query paraphrases rather than quotes."
+  },
+  {
+    "id": "q022",
+    "query": "Who acted as Yeltsin's shadow prime minister early on?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 10,
+    "expectedPassageContains": "shadow",
+    "notes": "Tests a specific characterisation buried in a long quoted passage."
+  },
+  {
+    "id": "q023",
+    "query": "What body did Yeltsin set up in 1991 to coordinate reform policy?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 11,
+    "expectedPassageContains": "State Council",
+    "notes": "Institution-by-function query."
+  },
+  {
+    "id": "q024",
+    "query": "What social club did Yeltsin establish for his inner circle?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 12,
+    "expectedPassageContains": "Presidential Club",
+    "notes": "Named institution, asked without naming it."
+  },
+  {
+    "id": "q025",
+    "query": "Who ran the presidential security service and wiretapped officials?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 14,
+    "expectedPassageContains": "tapped telephones",
+    "notes": "Tests retrieval of a specific abuse of power rather than the person's name."
+  },
+  {
+    "id": "q026",
+    "query": "Who replaced Filatov as head of the presidential administration in 1996?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 14,
+    "expectedPassageContains": "Yegorov",
+    "notes": "Named succession event with a date."
+  },
+  {
+    "id": "q027",
+    "query": "Why did Yeltsin keep overlapping advisers with competing views?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 9,
+    "expectedPassageContains": "redundancy",
+    "notes": "Conceptual: the passage explains it as deliberate redundancy."
+  },
+  {
+    "id": "q028",
+    "query": "Did Yeltsin promote people from the region where he grew up?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 10,
+    "expectedPassageContains": "zemlyaki",
+    "notes": "Query in plain English against a transliterated Russian term."
+  },
+  {
+    "id": "q029",
+    "query": "What did Yeltsin see as the source of his authority to govern?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 2,
+    "expectedPassageContains": "historical mission",
+    "notes": "Abstract, motivational question with no keyword overlap."
+  },
+  {
+    "id": "q030",
+    "query": "Was there any collective cabinet body for sharing information in the Kremlin?",
+    "expectedSourceId": "9063fed4-1b20-46df-9e6a-bbdf2301a093",
+    "expectedPage": 11,
+    "expectedPassageContains": "collegial",
+    "notes": "Tests an absence-of-institution argument."
+  }
+]
