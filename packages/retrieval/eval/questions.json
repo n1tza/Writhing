@@ -1,0 +1,30 @@
+{
+  "note": "Retrieval evaluation set. Each case is a question a user might ask of a source, plus terms that must appear in a genuinely relevant passage. `expect` is scored case-insensitively against the retrieved text; a case passes if a passage containing every term in any one of the `expect` groups appears within the top `k` results. Questions are deliberately phrased in the user's words rather than the document's, so the vector leg has to do real work.",
+  "cases": [
+    {
+      "id": "north-definition",
+      "question": "What are institutions?",
+      "expect": [["humanly devised constraints"]]
+    },
+    {
+      "id": "north-transaction-costs",
+      "question": "Why is it costly to make and enforce agreements between people?",
+      "expect": [["transaction cost"], ["enforce", "exchange"]]
+    },
+    {
+      "id": "north-europe",
+      "question": "How did economic institutions develop in early modern Europe?",
+      "expect": [["europe"]]
+    },
+    {
+      "id": "north-why-not-adapt",
+      "question": "Why do some societies fail to adopt institutions that would make them richer?",
+      "expect": [["belief"], ["institutions do not evolve"], ["persist"]]
+    },
+    {
+      "id": "north-trade-gains",
+      "question": "What role do institutions play in capturing the gains from trade?",
+      "expect": [["gains from trade"], ["exchange"]]
+    }
+  ]
+}

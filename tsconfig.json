@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@writhing/retrieval": ["./packages/retrieval/index.ts"]
     }
   },
   "include": [

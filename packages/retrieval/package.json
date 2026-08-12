@@ -1,0 +1,11 @@
+{
+  "name": "@writhing/retrieval",
+  "version": "0.0.1",
+  "main": "./dist/index.js",
+  "types": "./dist/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "eval": "tsx eval/run_eval.ts"
+  }
+}

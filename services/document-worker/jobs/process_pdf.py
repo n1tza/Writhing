@@ -106,10 +106,16 @@ def process_source(source_id: str) -> None:
                 f"Embedding count mismatch: {len(embeddings)} embeddings for {len(chunks)} chunks"
             )
 
-        # 7. Insert evidence_units in bulk
+        # 7. Insert evidence_units in bulk.
+        # chunk_index is the position in document order, used by
+        # expand_evidence_context to widen a retrieved passage to its
+        # neighbours. Indexed over the stored chunks rather than all chunks, so
+        # the sequence stays contiguous where a reference footnote was filtered
+        # out and a window never lands on a hole.
         evidence_rows = [
             {
                 "source_id": source_id,
+                "chunk_index": index,
                 "text": chunk.text,
                 "text_hash": chunk.text_hash,
                 "page_start": chunk.page_start,
@@ -120,7 +126,7 @@ def process_source(source_id: str) -> None:
                 "char_end": chunk.char_end,
                 "embedding": embedding,
             }
-            for chunk, embedding in zip(chunks, embeddings)
+            for index, (chunk, embedding) in enumerate(zip(chunks, embeddings))
         ]
 
         supabase.table("evidence_units").insert(evidence_rows).execute()
