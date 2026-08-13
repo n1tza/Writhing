@@ -169,6 +169,7 @@ export default function Home() {
           className="ui-panel-enter my-2 mr-2 shrink-0 overflow-hidden rounded-2xl border border-[var(--border-subtle)] bg-[var(--panel-bg)]"
         >
           <ChatSidebar
+            documentId={documentId}
             editorApiRef={editorApiRef}
             diffHandlersRef={diffHandlersRef}
           />

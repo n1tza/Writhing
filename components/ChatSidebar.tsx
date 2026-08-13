@@ -10,6 +10,11 @@ import { marked } from "marked";
 import type { DiffHandlers, EditKind, EditorApi } from "@/components/Editor";
 import EditDiff from "@/components/EditDiff";
 import TaskList, { type Task } from "@/components/TaskList";
+import GroundedAnswer, {
+  type GroundedEvidence,
+  type GroundedSegment,
+} from "@/components/GroundedAnswer";
+import { listSources } from "@/lib/sources/api";
 
 const TOOL_TO_KIND: Record<string, EditKind> = {
   "tool-editDocument": "editDocument",
@@ -53,6 +58,18 @@ function renderMarkdown(text: string): { __html: string } {
   return { __html: marked.parse(text, { async: false, breaks: true }) };
 }
 
+interface GroundedTurn {
+  id: string;
+  question: string;
+  answer?: {
+    segments: GroundedSegment[];
+    evidence: GroundedEvidence[];
+    evidenceSufficient: boolean;
+    note: string | null;
+  };
+  error?: string;
+}
+
 type ToolPart = {
   type: string;
   toolCallId: string;
@@ -65,10 +82,18 @@ type ToolPart = {
 export default function ChatSidebar({
   editorApiRef,
   diffHandlersRef,
+  documentId,
 }: {
   editorApiRef: MutableRefObject<EditorApi | null>;
   diffHandlersRef: MutableRefObject<DiffHandlers>;
+  /** Required for grounded Ask answers; without it Ask cannot cite sources. */
+  documentId?: string;
 }) {
+  // Ask mode goes through the grounded RAG route rather than the tool-calling
+  // transport: its answers are cited passages, not document edits, so they need
+  // their own thread. Agent mode is untouched.
+  const [grounded, setGrounded] = useState<GroundedTurn[]>([]);
+  const [groundedBusy, setGroundedBusy] = useState(false);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ChatMode>("agent");
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -139,7 +164,9 @@ export default function ChatSidebar({
     },
   });
 
-  const busy = status === "submitted" || status === "streaming";
+  // groundedBusy covers Ask mode, which does not go through the useChat
+  // transport and so never reports a streaming status.
+  const busy = status === "submitted" || status === "streaming" || groundedBusy;
 
   function kindOf(toolCallId: string): EditKind | null {
     for (const message of messages) {
@@ -360,8 +387,64 @@ export default function ChatSidebar({
     });
   }, [busy, tasks, messages, sendMessage]);
 
+  /** Ask a question of the uploaded sources; every claim comes back cited. */
+  async function askGrounded(question: string) {
+    const id = crypto.randomUUID();
+    setGrounded((prev) => [...prev, { id, question }]);
+    setGroundedBusy(true);
+    try {
+      if (!documentId) throw new Error("Still connecting — try again in a moment.");
+      const sources = await listSources();
+      const ready = sources.filter((s) => s.status === "ready");
+      if (ready.length === 0) {
+        throw new Error("No processed sources yet. Upload a PDF and wait for it to finish.");
+      }
+
+      const response = await fetch("/api/chat/grounded", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: question,
+          documentId,
+          sourceIds: ready.map((s) => s.id),
+          selectedText: editorApiRef.current?.getSelectionText() || null,
+        }),
+      });
+      // Read as text first: a crashed route can answer with an HTML error page,
+      // and response.json() would then throw a parser error that hides the
+      // actual failure.
+      const raw = await response.text();
+      let data: NonNullable<GroundedTurn["answer"]> & { error?: string };
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(
+          response.ok
+            ? "The assistant returned an unreadable response."
+            : `Request failed (${response.status}). Check the server logs.`,
+        );
+      }
+      if (!response.ok) throw new Error(data.error ?? "Request failed");
+
+      setGrounded((prev) =>
+        prev.map((turn) => (turn.id === id ? { ...turn, answer: data } : turn)),
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Request failed";
+      setGrounded((prev) =>
+        prev.map((turn) => (turn.id === id ? { ...turn, error: message } : turn)),
+      );
+    } finally {
+      setGroundedBusy(false);
+    }
+  }
+
   // Start a brand-new request from the user: clear any prior task state.
   function submitUserMessage(text: string) {
+    if (modeRef.current === "ask") {
+      void askGrounded(text);
+      return;
+    }
     setTasks([]);
     setRefiningToolCallId(null);
     pendingRefinementRef.current = null;
@@ -415,6 +498,41 @@ export default function ChatSidebar({
             </p>
           </div>
         )}
+
+        {grounded.map((turn) => (
+          <div key={turn.id} className="text-sm">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+              You
+            </div>
+            <p className="whitespace-pre-wrap rounded-xl bg-white/[0.05] px-3 py-2 leading-relaxed text-zinc-200">
+              {turn.question}
+            </p>
+            <div className="mt-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+              Writhing
+            </div>
+            {turn.error ? (
+              <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-300">
+                {turn.error}
+              </p>
+            ) : turn.answer ? (
+              <GroundedAnswer
+                segments={turn.answer.segments}
+                evidence={turn.answer.evidence}
+                evidenceSufficient={turn.answer.evidenceSufficient}
+                note={turn.answer.note}
+                onOpenSource={(sourceId, page) => {
+                  window.dispatchEvent(
+                    new CustomEvent("writhing:open-source", {
+                      detail: { sourceId, page },
+                    }),
+                  );
+                }}
+              />
+            ) : (
+              <p className="text-xs text-zinc-500">Searching your sources…</p>
+            )}
+          </div>
+        ))}
 
         {visibleMessages.map((message) => (
           <div key={message.id} className="text-sm">
