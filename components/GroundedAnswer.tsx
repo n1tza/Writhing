@@ -3,6 +3,8 @@
 export interface GroundedEvidence {
   id: string;
   sourceId: string;
+  /** Short document name for the citation pill, e.g. an author surname. */
+  sourceLabel: string;
   text: string;
   sectionTitle: string | null;
   pageStart: number | null;
@@ -18,7 +20,7 @@ export interface GroundedAnswerProps {
   evidence: GroundedEvidence[];
   evidenceSufficient: boolean;
   note?: string | null;
-  onOpenSource: (sourceId: string, page: number) => void;
+  onOpenSource: (sourceId: string, page: number, passage: string) => void;
 }
 
 export default function GroundedAnswer({
@@ -50,11 +52,14 @@ export default function GroundedAnswer({
                 <button
                   key={id}
                   type="button"
-                  title={ev.text.replace(/\s+/g, " ").slice(0, 160)}
-                  onClick={() => onOpenSource(ev.sourceId, ev.pageStart ?? 1)}
-                  className="ml-0.5 align-super text-[10px] font-medium text-blue-300 underline decoration-dotted underline-offset-2 transition-colors hover:text-blue-200"
+                  title={`${ev.sectionTitle ?? "Source"} — ${ev.text.replace(/\s+/g, " ").slice(0, 160)}…`}
+                  onClick={() => onOpenSource(ev.sourceId, ev.pageStart ?? 1, ev.text)}
+                  className="mx-0.5 inline-flex max-w-[13rem] translate-y-[-1px] items-baseline gap-1 rounded-full border border-blue-400/25 bg-blue-400/10 px-1.5 py-px align-middle text-[10px] font-medium text-blue-200 transition-colors hover:border-blue-300/50 hover:bg-blue-400/20"
                 >
-                  [{ev.pageStart ?? "?"}]
+                  <span className="truncate">{ev.sourceLabel}</span>
+                  <span className="shrink-0 text-blue-300/70">
+                    p.{ev.pageStart ?? "?"}
+                  </span>
                 </button>
               );
             })}
@@ -63,29 +68,53 @@ export default function GroundedAnswer({
       </p>
 
       {evidence.length > 0 && (
-        <details className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-white/[0.02]">
-          <summary className="cursor-pointer px-3 py-1.5 text-[11px] text-zinc-500 hover:text-zinc-300">
-            {evidence.length} passage{evidence.length === 1 ? "" : "s"} retrieved
-          </summary>
-          <div className="space-y-2 px-3 pb-2">
-            {evidence.map((e) => (
-              <button
-                key={e.id}
-                type="button"
-                onClick={() => onOpenSource(e.sourceId, e.pageStart ?? 1)}
-                className="block w-full text-left"
-              >
-                <span className="block text-[10px] uppercase tracking-wide text-zinc-600">
-                  p.{e.pageStart ?? "?"} · {e.sectionTitle ?? "no section"}
-                </span>
-                <span className="block text-[11px] leading-snug text-zinc-400">
-                  {e.text.replace(/\s+/g, " ").slice(0, 180)}…
-                </span>
-              </button>
-            ))}
-          </div>
-        </details>
+        <EvidenceList evidence={evidence} onOpenSource={onOpenSource} />
       )}
+
     </div>
+  );
+}
+
+/**
+ * The retrieved passages behind an answer or an edit, collapsed by default.
+ *
+ * Shared by Ask mode (where citations are bound to segments) and Agent mode
+ * (where the grounding is inline in the prose), so "what did it read?" looks
+ * and behaves the same in both.
+ */
+export function EvidenceList({
+  evidence,
+  onOpenSource,
+  label = "retrieved",
+}: {
+  evidence: GroundedEvidence[];
+  onOpenSource: (sourceId: string, page: number, passage: string) => void;
+  /** Verb shown after the count, e.g. "3 passages retrieved". */
+  label?: string;
+}) {
+  return (
+    <details className="mt-2 rounded-lg border border-[var(--border-subtle)] bg-white/[0.02]">
+      <summary className="cursor-pointer px-3 py-1.5 text-[11px] text-zinc-500 hover:text-zinc-300">
+        {evidence.length} passage{evidence.length === 1 ? "" : "s"} {label}
+      </summary>
+      <div className="space-y-2 px-3 pb-2">
+        {evidence.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => onOpenSource(e.sourceId, e.pageStart ?? 1, e.text)}
+            className="block w-full text-left"
+          >
+            <span className="block text-[10px] uppercase tracking-wide text-zinc-600">
+              {e.sourceLabel} · p.{e.pageStart ?? "?"} ·{" "}
+              {e.sectionTitle ?? "no section"}
+            </span>
+            <span className="block text-[11px] leading-snug text-zinc-400">
+              {e.text.replace(/\s+/g, " ").slice(0, 180)}…
+            </span>
+          </button>
+        ))}
+      </div>
+    </details>
   );
 }
