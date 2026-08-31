@@ -338,3 +338,63 @@ a,
   background: transparent;
   padding: 0;
 }
+
+/* pdf.js text layer: invisible, absolutely-positioned text laid exactly over
+   the rendered canvas so a cited passage can be highlighted and selected.
+   These rules mirror .textLayer in pdfjs-dist/web/pdf_viewer.css — the span
+   geometry is computed from --total-scale-factor and --font-height, which
+   pdf.js sets per span, so dropping them puts every span in the wrong place. */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: transparent;
+  z-index: 0;
+
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.pdf-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.pdf-text-layer > :not(.markedContent),
+.pdf-text-layer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x))
+    scale(var(--min-font-size-inv));
+}
+
+.pdf-text-layer .markedContent {
+  display: contents;
+}
+
+.pdf-text-layer span::selection {
+  background: rgb(59 130 246 / 0.35);
+}
+
+/* The passage a citation points at. */
+.pdf-text-layer span.pdf-cited {
+  background: rgb(250 204 21 / 0.4);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgb(250 204 21 / 0.3);
+}

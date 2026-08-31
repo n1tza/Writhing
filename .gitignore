@@ -52,3 +52,6 @@ __pycache__/
 
 # Nested package node_modules (root rule is anchored with a leading slash)
 node_modules/
+
+# pdf.js runtime assets, copied from node_modules by scripts/copy-pdfjs-assets.mjs
+public/pdfjs/

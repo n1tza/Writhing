@@ -10,6 +10,8 @@ import {
   saveMetadata,
   uploadSource,
 } from "@/lib/sources/api";
+import PdfViewer from "@/components/PdfViewer";
+import { onOpenSource } from "@/lib/sources/citation";
 import {
   EMPTY_METADATA,
   titleFromFilename,
@@ -38,6 +40,11 @@ export default function SourceSidebar() {
   const [loaded, setLoaded] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ id: string; url: string } | null>(null);
+  // Page a citation asked us to open at. Kept separate from `preview` because
+  // the same signed URL is reused across pages.
+  const [previewPage, setPreviewPage] = useState(1);
+  // Passage a citation asked us to highlight on that page.
+  const [previewHighlight, setPreviewHighlight] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [pending, setPending] = useState<PendingUpload | null>(null);
   const [editing, setEditing] = useState<Source | null>(null);
@@ -89,6 +96,17 @@ export default function SourceSidebar() {
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
   }, [inFlight, refresh]);
+
+  // A citation pill in the chat asks for a specific page of a specific source.
+  useEffect(
+    () =>
+      onOpenSource(({ sourceId, page, passage }) => {
+        setPreviewId(sourceId);
+        setPreviewPage(page);
+        setPreviewHighlight(passage ?? null);
+      }),
+    [],
+  );
 
   const previewing = sources.find((s) => s.id === previewId) ?? null;
 
@@ -217,10 +235,12 @@ export default function SourceSidebar() {
       {previewing ? (
         <div className="min-h-0 flex-1 bg-zinc-900">
           {previewUrl ? (
-            <iframe
-              src={previewUrl}
-              title={previewing.filename}
-              className="h-full w-full border-0"
+            <PdfViewer
+              key={previewing.id}
+              url={previewUrl}
+              page={previewPage}
+              highlight={previewHighlight}
+              onPageChange={(p) => setPreviewPage(p)}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-zinc-500">
@@ -264,9 +284,17 @@ export default function SourceSidebar() {
                   key={source.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => setPreviewId(source.id)}
+                  onClick={() => {
+                    setPreviewPage(1);
+                    setPreviewHighlight(null);
+                    setPreviewId(source.id);
+                  }}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") setPreviewId(source.id);
+                    if (e.key === "Enter" || e.key === " ") {
+                      setPreviewPage(1);
+                      setPreviewHighlight(null);
+                      setPreviewId(source.id);
+                    }
                   }}
                   className="group flex w-full cursor-pointer items-start gap-3 rounded-xl border border-[var(--border-subtle)] bg-white/[0.02] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.05]"
                 >
