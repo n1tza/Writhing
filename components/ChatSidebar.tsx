@@ -11,10 +11,12 @@ import type { DiffHandlers, EditKind, EditorApi } from "@/components/Editor";
 import EditDiff from "@/components/EditDiff";
 import TaskList, { type Task } from "@/components/TaskList";
 import GroundedAnswer, {
+  EvidenceList,
   type GroundedEvidence,
   type GroundedSegment,
 } from "@/components/GroundedAnswer";
 import { listSources } from "@/lib/sources/api";
+import { openSourceAtPage } from "@/lib/sources/citation";
 
 const TOOL_TO_KIND: Record<string, EditKind> = {
   "tool-editDocument": "editDocument",
@@ -86,12 +88,16 @@ export default function ChatSidebar({
 }: {
   editorApiRef: MutableRefObject<EditorApi | null>;
   diffHandlersRef: MutableRefObject<DiffHandlers>;
-  /** Required for grounded Ask answers; without it Ask cannot cite sources. */
+  /**
+   * Required for retrieval in both modes; without it Ask cannot cite sources
+   * and Agent writes ungrounded.
+   */
   documentId?: string;
 }) {
   // Ask mode goes through the grounded RAG route rather than the tool-calling
   // transport: its answers are cited passages, not document edits, so they need
-  // their own thread. Agent mode is untouched.
+  // their own thread. Agent mode retrieves the same evidence inside /api/chat
+  // and streams it back as a data part alongside its edits.
   const [grounded, setGrounded] = useState<GroundedTurn[]>([]);
   const [groundedBusy, setGroundedBusy] = useState(false);
   const [input, setInput] = useState("");
@@ -105,6 +111,10 @@ export default function ChatSidebar({
     feedback: string;
   } | null>(null);
   const modeRef = useRef<ChatMode>("agent");
+  // The transport is built once, on mount, but documentId arrives from an async
+  // session lookup — read it through a ref so the first requests aren't sent
+  // without it (which would silently cost Agent mode its retrieval).
+  const documentIdRef = useRef<string | undefined>(documentId);
   const proposedRef = useRef<Set<string>>(new Set());
   const resolvedRef = useRef<Set<string>>(new Set());
   // planTasks tool calls we've already turned into a task list.
@@ -115,6 +125,10 @@ export default function ChatSidebar({
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  useEffect(() => {
+    documentIdRef.current = documentId;
+  }, [documentId]);
 
   const { messages, sendMessage, addToolOutput, status, stop } = useChat({
     transport: new DefaultChatTransport({
@@ -128,6 +142,9 @@ export default function ChatSidebar({
             documentHtml: api?.getHtml() ?? "",
             selection: api?.getSelectionText() ?? "",
             mode: modeRef.current,
+            // Lets the route retrieve source evidence for this turn, so Agent
+            // edits are grounded in the user's uploaded PDFs.
+            documentId: documentIdRef.current,
           },
         };
       },
@@ -520,13 +537,9 @@ export default function ChatSidebar({
                 evidence={turn.answer.evidence}
                 evidenceSufficient={turn.answer.evidenceSufficient}
                 note={turn.answer.note}
-                onOpenSource={(sourceId, page) => {
-                  window.dispatchEvent(
-                    new CustomEvent("writhing:open-source", {
-                      detail: { sourceId, page },
-                    }),
-                  );
-                }}
+                onOpenSource={(sourceId, page, passage) =>
+                  openSourceAtPage({ sourceId, page, passage })
+                }
               />
             ) : (
               <p className="text-xs text-zinc-500">Searching your sources…</p>
@@ -556,6 +569,20 @@ export default function ChatSidebar({
                     key={index}
                     className="chat-prose text-zinc-300"
                     dangerouslySetInnerHTML={renderMarkdown(part.text)}
+                  />
+                );
+              }
+
+              if (part.type === "data-evidence") {
+                const evidence = (part as { data: GroundedEvidence[] }).data;
+                return (
+                  <EvidenceList
+                    key={index}
+                    evidence={evidence}
+                    label="grounding this edit"
+                    onOpenSource={(sourceId, page, passage) =>
+                      openSourceAtPage({ sourceId, page, passage })
+                    }
                   />
                 );
               }

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "predev": "node scripts/copy-pdfjs-assets.mjs",
+    "prebuild": "node scripts/copy-pdfjs-assets.mjs"
   },
   "dependencies": {
     "@ai-sdk/react": "^4.0.19",
@@ -26,6 +28,7 @@
     "marked": "^14.1.4",
     "next": "16.2.10",
     "openai": "^7.4.0",
+    "pdfjs-dist": "^6.2.108",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tiptap-pagination-plus": "^3.1.0",

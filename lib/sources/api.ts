@@ -12,22 +12,22 @@ interface SourceRow {
   status: SourceStatus;
   error_message: string | null;
   created_at: string;
-  bibliography_items:
-    | {
-        title: string | null;
-        authors: string[] | null;
-        year: number | null;
-        journal: string | null;
-        publisher: string | null;
-        doi: string | null;
-        url: string | null;
-      }[]
-    | null;
+  // An object, not an array: bibliography_items.source_id is unique, so
+  // PostgREST infers a to-one relationship and embeds a single row.
+  bibliography_items: {
+    title: string | null;
+    authors: string[] | null;
+    year: number | null;
+    journal: string | null;
+    publisher: string | null;
+    doi: string | null;
+    url: string | null;
+  } | null;
   evidence_units: { count: number }[] | null;
 }
 
 function toSource(row: SourceRow): Source {
-  const bib = row.bibliography_items?.[0] ?? null;
+  const bib = row.bibliography_items ?? null;
   return {
     id: row.id,
     filename: row.filename,

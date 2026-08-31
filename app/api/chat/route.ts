@@ -1,13 +1,26 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   convertToModelMessages,
+  createUIMessageStream,
+  createUIMessageStreamResponse,
   isStepCount,
   streamText,
   type UIMessage,
 } from "ai";
 import { editorTools } from "@/lib/tools";
+import { createClient } from "@/lib/supabase/server";
+import {
+  EMPTY_CONTEXT,
+  readySourceIds,
+  retrieveContext,
+  type RetrievedContext,
+  type RetrievedEvidence,
+} from "@/lib/ai/evidence";
+import { buildAgentEvidenceSection } from "@/lib/ai/prompts";
 
-export const maxDuration = 30;
+// Retrieval and embedding run before generation, so the ceiling has to cover
+// both legs plus a multi-step tool turn.
+export const maxDuration = 60;
 
 const openrouter = createOpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -22,6 +35,7 @@ function systemPrompt(
   documentHtml: string,
   selection: string,
   mode: ChatMode,
+  context: RetrievedContext,
 ): string {
   const intro = [
     "You are Writhing, an AI writing partner embedded in a document editor (think Cursor, but for prose instead of code).",
@@ -81,6 +95,11 @@ function systemPrompt(
           "",
         ];
 
+  // Agent mode gets the same retrieved passages Ask mode answers from, so the
+  // prose it writes into the document is grounded in the user's own sources.
+  const evidenceSection =
+    mode === "agent" ? [buildAgentEvidenceSection(context.evidence)] : [];
+
   const docSection = [
     "=== CURRENT DOCUMENT ===",
     document.trim().length > 0 ? document : "(the document is empty)",
@@ -94,7 +113,25 @@ function systemPrompt(
       : "",
   ];
 
-  return [...intro, ...modeSection, ...docSection].join("\n");
+  return [...intro, ...modeSection, ...evidenceSection, ...docSection].join(
+    "\n",
+  );
+}
+
+// The client drives its task loop by injecting user messages behind this
+// prefix. Retrieval wants the task itself, not the marker.
+const CONTROL_PREFIX = "::WRITHING_TASK:: ";
+
+/** The text of the newest user turn — what retrieval should be run against. */
+function latestUserText(messages: UIMessage[]): string {
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  if (!lastUser) return "";
+  return lastUser.parts
+    .filter((p): p is { type: "text"; text: string } => p.type === "text")
+    .map((p) => p.text)
+    .join(" ")
+    .replace(CONTROL_PREFIX, "")
+    .trim();
 }
 
 export async function POST(req: Request) {
@@ -104,21 +141,72 @@ export async function POST(req: Request) {
     documentHtml = "",
     selection = "",
     mode = "agent",
+    documentId,
   }: {
     messages: UIMessage[];
     document?: string;
     documentHtml?: string;
     selection?: string;
     mode?: ChatMode;
+    documentId?: string;
   } = await req.json();
+
+  // Retrieval is Agent-mode only here: Ask mode has its own grounded route,
+  // which returns citation-bound segments rather than a tool stream.
+  let context = EMPTY_CONTEXT;
+  if (mode === "agent" && documentId) {
+    try {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) {
+        context = await retrieveContext({
+          supabase,
+          message: latestUserText(messages),
+          selectedText: selection || null,
+          documentId,
+          sourceIds: await readySourceIds(supabase, user.id),
+        });
+      }
+    } catch (error) {
+      // A retrieval failure degrades Agent mode to ungrounded editing, which is
+      // still useful — far better than failing the whole turn. The prompt then
+      // carries the "no evidence, do not invent citations" block.
+      console.error("Agent retrieval failed:", error);
+    }
+  }
 
   const result = streamText({
     model: openrouter(MODEL),
-    system: systemPrompt(document, documentHtml, selection, mode),
+    system: systemPrompt(document, documentHtml, selection, mode, context),
     messages: await convertToModelMessages(messages),
     tools: mode === "ask" ? undefined : editorTools,
     stopWhen: isStepCount(8),
   });
 
-  return result.toUIMessageStreamResponse();
+  // The passages travel to the client as a data part so the chat can show what
+  // the edit was grounded in, and link each one back into the PDF.
+  const stream = createUIMessageStream({
+    execute: ({ writer }) => {
+      if (context.evidence.length > 0) {
+        writer.write({
+          type: "data-evidence",
+          data: context.evidence.map(
+            ({ id, sourceId, sourceLabel, text, sectionTitle, pageStart }: RetrievedEvidence) => ({
+              id,
+              sourceId,
+              sourceLabel,
+              text,
+              sectionTitle,
+              pageStart,
+            }),
+          ),
+        });
+      }
+      writer.merge(result.toUIMessageStream());
+    },
+  });
+
+  return createUIMessageStreamResponse({ stream });
 }

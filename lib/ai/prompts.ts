@@ -70,3 +70,54 @@ ${userMessage}
 Respond with JSON only. Match the output schema exactly.
 `.trim()
 }
+
+/**
+ * The evidence block appended to the Agent-mode system prompt.
+ *
+ * Agent mode writes into the document rather than answering in JSON, so it
+ * cannot bind claims to passage ids the way Ask mode does. The grounding rule
+ * is carried by the prose instead: cite inline, in the reader's own notation,
+ * using the label and page given here.
+ */
+export function buildAgentEvidenceSection(
+  evidence: Array<{
+    id: string
+    sourceLabel: string
+    contextText: string
+    sectionTitle: string | null
+    pageStart: number | null
+  }>,
+): string {
+  if (evidence.length === 0) {
+    return [
+      '=== SOURCE EVIDENCE ===',
+      'No passages from the user\'s uploaded sources matched this request.',
+      'Do not invent citations, quotes, page numbers, or author names. If the request needs support from the sources, say so instead of writing an unsupported claim.',
+      '=== END SOURCE EVIDENCE ===',
+      '',
+    ].join('\n')
+  }
+
+  const passages = evidence
+    .map(e =>
+      [
+        `[EVIDENCE ${e.sourceLabel}, p.${e.pageStart ?? '?'}${e.sectionTitle ? ` — ${e.sectionTitle}` : ''}]`,
+        e.contextText,
+      ].join('\n'),
+    )
+    .join('\n---\n')
+
+  return [
+    '=== SOURCE EVIDENCE (retrieved from the user\'s uploaded sources for this request) ===',
+    passages,
+    '=== END SOURCE EVIDENCE ===',
+    '',
+    'GROUNDING RULES (they apply to every word you write into the document):',
+    '- Any factual claim, statistic, quotation, or attributed argument you add must be supported by one of the EVIDENCE passages above.',
+    '- Cite the passage you used inline, immediately after the claim, as (Label, p.N) — copy the Label and page exactly as they appear in the passage header, e.g. "(Colton, p.14)".',
+    '- Never fabricate an author, page number, quotation, or statistic, and never cite a source that is not in the passages above.',
+    '- If the evidence does not support what the user asked you to write, do not write it. Make whatever part of the request the evidence does support, and say plainly in chat what was missing.',
+    '- Stylistic edits (tightening, reordering, tone, formatting) need no citation — only new factual content does.',
+    '',
+  ].join('\n')
+}

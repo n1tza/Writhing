@@ -1,9 +1,7 @@
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { generateText } from 'ai'
 import { createClient } from '@/lib/supabase/server'
-import { SourceHybridRetriever, DraftBlockRetriever } from '@writhing/retrieval'
-import { embedQuery } from '@/lib/ai/embed'
-import { buildRetrievalQuery } from '@/lib/ai/build-query'
+import { retrieveContext } from '@/lib/ai/evidence'
 import { buildChatPrompt, CHAT_SYSTEM_PROMPT } from '@/lib/ai/prompts'
 import { ChatResponseSchema } from '@/lib/ai/schema'
 
@@ -39,8 +37,6 @@ export async function POST(req: Request) {
 
 async function handle(req: Request) {
   const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY })
-  const sourceRetriever = new SourceHybridRetriever()
-  const draftRetriever = new DraftBlockRetriever()
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -58,61 +54,26 @@ async function handle(req: Request) {
     selectedText: string | null
   } = await req.json()
 
-  // 1. Build retrieval query from selected text + message
-  const retrievalQuery = buildRetrievalQuery(message, selectedText)
+  // Retrieval: query building, embedding, both retrievers, and source labels.
+  // Shared with Agent mode, so both are grounded in the same passages.
+  const { evidence, draftBlocks } = await retrieveContext({
+    supabase,
+    message,
+    selectedText,
+    documentId,
+    sourceIds,
+  })
 
-  // 2. Embed the query
-  const embedding = await embedQuery(retrievalQuery)
-
-  // 3. Retrieve evidence and draft blocks in parallel
-  const [evidenceResults, draftResults] = await Promise.all([
-    sourceRetriever.retrieve({
-      query: retrievalQuery,
-      queryEmbedding: embedding,
-      documentId,
-      sourceIds,
-      topK: 5,
-      includeEvidence: true,
-      includeDraft: false,
-    }),
-    draftRetriever.retrieve({
-      query: retrievalQuery,
-      queryEmbedding: embedding,
-      documentId,
-      sourceIds: [],
-      topK: 3,
-      includeEvidence: false,
-      includeDraft: true,
-    }),
-  ])
-
-  // 4. Build the prompt.
-  //
-  // contextText, not text: the model reads the passage plus its neighbours so it
-  // can resolve references the passage opens with ("Such societies need..."),
+  // contextText, not text: the model reads the passage plus its neighbours so
+  // it can resolve references the passage opens with ("Such societies need..."),
   // while the citation still points at the exact matched paragraph.
-  const evidence = evidenceResults
-    .filter(r => r.citable)
-    .map(r => ({
-      id: r.id,
-      sourceId: r.sourceId,
-      text: r.contextText,
-      citedText: r.text,
-      sectionTitle: r.sectionTitle,
-      pageStart: r.pageStart,
-    }))
+  const userPrompt = buildChatPrompt(
+    message,
+    evidence.map(e => ({ ...e, text: e.contextText })),
+    draftBlocks,
+  )
 
-  const draftBlocks = draftResults
-    .filter(r => !r.citable)
-    .map(r => ({
-      id: r.id,
-      content: r.content,
-      parentHeading: r.parentHeading,
-    }))
-
-  const userPrompt = buildChatPrompt(message, evidence, draftBlocks)
-
-  // 5. Call the model
+  // Call the model
   const response = await generateText({
     model: openrouter(MODEL),
     maxOutputTokens: 4096,
@@ -122,7 +83,7 @@ async function handle(req: Request) {
 
   const rawText = response.text
 
-  // 6. Parse and validate.
+  // Parse and validate.
   // Models wrap JSON in a ```json fence often enough to be worth tolerating,
   // even though the system prompt forbids it — a fence is a formatting slip,
   // not a grounding failure, and rejecting it would discard a valid answer.
@@ -138,7 +99,7 @@ async function handle(req: Request) {
     )
   }
 
-  // 7. Validate all evidence IDs in the response actually exist in retrieved set
+  // Validate all evidence IDs in the response actually exist in retrieved set
   const validIds = new Set(evidence.map(e => e.id))
   const allSegmentIds = parsed.segments.flatMap(s => s.evidenceIds)
   const unknownIds = allSegmentIds.filter(id => !validIds.has(id))
@@ -151,7 +112,7 @@ async function handle(req: Request) {
     )
   }
 
-  // 8. Log to generation_runs
+  // Log to generation_runs
   await supabase.from('generation_runs').insert({
     document_id: documentId,
     user_id: user.id,
@@ -165,7 +126,7 @@ async function handle(req: Request) {
     accepted: null,
   })
 
-  // 9. Return response with evidence metadata attached.
+  // Return response with evidence metadata attached.
   // `text` is the citable passage — the citation card shows what the AI cited,
   // not the wider window the model read.
   return Response.json({
@@ -175,7 +136,8 @@ async function handle(req: Request) {
     evidence: evidence.map(e => ({
       id: e.id,
       sourceId: e.sourceId,
-      text: e.citedText,
+      sourceLabel: e.sourceLabel,
+      text: e.text,
       sectionTitle: e.sectionTitle,
       pageStart: e.pageStart,
     })),
