@@ -8,7 +8,8 @@ shows you the passage behind every claim.
 Every edit arrives as a diff you accept or reject. Every citation is a link that
 opens the source PDF at the cited page, with the passage highlighted.
 
-<img width="800" height="430" alt="writhing" src="https://github.com/user-attachments/assets/24e17727-6a1f-4fc1-a435-532e422e3201" />
+## How It Works
+<img width="800" height="450" alt="writhing-preview" src="https://github.com/user-attachments/assets/36d4dbc9-f883-452b-8cec-8986d574fa9e" />
 
 ## Features
 
